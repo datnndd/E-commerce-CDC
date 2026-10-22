@@ -49,7 +49,7 @@
   ├── docs/                     # workflow, plan và tài liệu kiến trúc khi triển khai
   └── README.md
   ```
-- [x] Xác nhận AWS Console/CloudShell ở `ap-southeast-1` và billing bằng USD. AWS account đã có budget $1/tháng với email alert, thấp hơn mục tiêu khoảng 200.000đ; cảnh báo không tự dừng chi phí. Databricks Free Edition hiện không tính phí, có quota sử dụng riêng.
+- [x] Xác nhận AWS Console/CloudShell ở `ap-southeast-1`; người dùng đã tự cấu hình budget. Databricks Free Edition có quota sử dụng riêng.
 - [x] Tạo S3 bucket riêng cho project ở `ap-southeast-1`, bật Block Public Access, tắt ACL và dùng mã hoá mặc định SSE-S3. Dữ liệu Bronze sẽ dùng prefix `bronze/` khi ingestion chạy.
 - [x] Chọn S3 bucket làm nơi lưu Bronze, và dùng Unity Catalog external location cho các prefix `silver/`, `gold/` khi tạo bảng Delta. Đặt lifecycle/xoá dữ liệu demo có chủ đích trước khi scale.
 - [x] Tạo IAM role chỉ cho bucket project, trust Unity Catalog bằng external ID và self-assume; tạo storage credential và external location riêng. Không tải access key dài hạn vào repo hay `.env`. CLI local/credential tạm thời sẽ cấu hình trước Giai đoạn 2.
@@ -59,14 +59,14 @@
 
 ### Done khi
 - [x] `docker compose up -d` chạy được Postgres + Airflow, vào được Airflow UI
-- [x] Ghi/đọc metadata/xoá 1 file test trong S3 bằng AWS CLI CloudShell; budget đã có trước khi tạo bucket.
+- [x] Ghi/đọc metadata/xoá 1 file test trong S3 bằng AWS CLI CloudShell.
 - [x] Chạy `SELECT 1` trên Databricks SQL warehouse; kết quả là `1`, sau đó dừng warehouse.
 - [x] Kiểm tra external location tới S3 project: các phép `READ`, `LIST`, `WRITE`, `DELETE` đều `PASS`; file events tắt vì chưa dùng ở giai đoạn này.
-- [ ] Repo đã push commit đầu tiên, `.gitignore` đã chặn `.env`, key JSON, `target/`, `dbt_packages/`
+- [x] Repo đã có commit cục bộ; `.gitignore` đã chặn `.env`, key JSON, `target/`, `dbt_packages/`. Các commit tiếp theo chỉ lưu cục bộ cho đến khi người dùng yêu cầu push.
 
 ### Rủi ro thường gặp
 - Lộ AWS access key lên GitHub → vô hiệu hoá/thu hồi key ngay, kiểm tra quyền và xoá key khỏi lịch sử Git; ưu tiên credential tạm thời để tránh tình huống này.
-- Quên budget hoặc để RDS/Databricks chạy ngoài giờ demo → tài nguyên tiếp tục phát sinh chi phí dù đã gửi cảnh báo.
+- Để RDS/Databricks chạy ngoài giờ demo → tài nguyên có thể tiếp tục phát sinh chi phí.
 
 ---
 
