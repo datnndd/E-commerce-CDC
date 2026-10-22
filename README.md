@@ -39,6 +39,10 @@ The PostgreSQL 18 image uses a new named volume, `postgres18_data`. The earlier 
 
 The Compose stack is for local development. Keep `.env`, cloud credentials, and generated Airflow passwords out of Git.
 
+## Project code layout
+
+`scripts/` is reserved for repository bootstrap and validation maintained by the Harness. Project data-source code belongs in `sources/`: `sources/oltp/` will hold PostgreSQL DDL, Olist loading and OLTP simulation; `sources/clickstream/` will hold the event generator. `ingestion/` receives source changes for Bronze, while `spark_jobs/`, `dbt_project/` and `airflow/dags/` own later transformation and orchestration stages. The source code files are planned for Stage 1 and are not implemented yet.
+
 ## Stage 0 cloud status
 
 AWS Console and CloudShell access in `ap-southeast-1` have been checked. The project S3 bucket has Block Public Access, ACLs disabled, and default SSE-S3 encryption. A small object was uploaded, inspected, and deleted using the AWS CLI in CloudShell. The bucket name and cloud credentials are intentionally kept out of this repository.

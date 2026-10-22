@@ -41,7 +41,10 @@
   ├── .env.example              # mẫu biến môi trường, KHÔNG chứa key thật
   ├── Makefile                  # up / down / test; thêm seed / run ở giai đoạn tương ứng
   ├── ingestion/                # script CDC, API, logs
-  ├── scripts/                  # seed_oltp.py, simulate_new_day.py
+  ├── scripts/                  # Harness: bootstrap/validation, không chứa mã pipeline
+  ├── sources/                  # dữ liệu nguồn và bộ mô phỏng của project
+  │   ├── oltp/                 # DDL, nạp Olist, mô phỏng thay đổi PostgreSQL
+  │   └── clickstream/          # sinh event JSON Lines
   ├── spark_jobs/               # job Silver (giai đoạn 3)
   ├── dbt_project/              # dbt (giai đoạn 4-5)
   ├── airflow/dags/
@@ -84,10 +87,10 @@
 
 #### 1A. Nạp dữ liệu thật làm initial snapshot (Ngày 2)
 - [ ] Tải **Brazilian E-Commerce (Olist)** từ Kaggle: 9 file CSV, ~100k orders giai đoạn 2016–2018, có sẵn customers, sellers, products, orders, order_items, payments, reviews + bảng dịch category sang tiếng Anh
-- [ ] Thiết kế DDL Postgres cho 7 bảng theo schema Olist: `customers, sellers, products, orders, order_items, payments, reviews`
+- [ ] Thiết kế `sources/oltp/schema.sql` cho 7 bảng theo schema Olist: `customers, sellers, products, orders, order_items, payments, reviews`
   - PK, FK, index trên các FK hay join
   - Map `orders.order_status` của Olist về tập dùng trong project: `created, paid, shipped, delivered, cancelled, refunded` (lưu cả status gốc nếu cần đối chiếu)
-- [ ] Viết `scripts/load_olist_to_postgres.py`: nạp CSV bằng `COPY` (không insert từng dòng), kiểm tra FK integrity sau khi nạp — record mồ côi (order_item không có order, review không có order...) thì ghi log và loại/quarantine, không nạp bừa
+- [ ] Viết `sources/oltp/load_olist.py`: nạp CSV bằng `COPY` (không insert từng dòng), kiểm tra FK integrity sau khi nạp — record mồ côi (order_item không có order, review không có order...) thì ghi log và loại/quarantine, không nạp bừa
 - [ ] **Bổ sung cột mà Olist không có** — bước bắt buộc, thiếu là CDC không chạy được:
   - Thêm `created_at, updated_at` cho mọi bảng: khởi tạo `updated_at =` timestamp nghiệp vụ gần nhất của bản ghi đó (ví dụ orders lấy `order_purchase_timestamp`, products/customers lấy thời điểm snapshot)
   - Ghi rõ trong README: đây là mốc snapshot — mọi thay đổi có `updated_at` lớn hơn mốc này đều do simulator ở 1C tạo ra
@@ -97,12 +100,12 @@
 - [ ] Vì là dữ liệu thật, các pattern này phải có sẵn mà không cần bạn "nặn": seasonality theo tháng, chênh lệch category, tương quan giao chậm ↔ rating thấp
 
 #### 1C. Gen phần mới — bám trên dữ liệu thật (Ngày 3–4)
-- [ ] Viết `scripts/simulate_new_day.py` — **script quan trọng nhất của giai đoạn này.** Khác với tự gen từ đầu: mọi bản ghi mới phải tham chiếu customers/products/sellers **có thật** trong DB:
+- [ ] Viết `sources/oltp/simulate_new_day.py` — **script quan trọng nhất của giai đoạn này.** Khác với tự gen từ đầu: mọi bản ghi mới phải tham chiếu customers/products/sellers **có thật** trong DB:
   - Thêm orders mới (số lượng tuỳ scale đang chạy, xem 1D) cho khách cũ (để RFM/retention có ý nghĩa) + một phần khách mới bằng Faker
   - Update giá `order_items`/products: đổi giá 3% products thật, đổi `city/state` của 2% customers thật → tạo sự kiện cho SCD Type 2 ở Giai đoạn 4
   - Xoá (hard delete) 0.1% customers + soft-cancel một số orders → tạo sự kiện DELETE cho CDC ở Giai đoạn 2/8
   - Mọi thay đổi đều phải set `updated_at = NOW()`
-- [ ] Viết `scripts/generate_clickstream.py`: sinh log JSON Lines, đủ các event `view_product, add_to_cart, begin_checkout, purchase`, có `session_id, device, utm_source` — và `product_id / customer_id` trong log **phải khớp với products/customers thật** để về sau join được với fact orders làm funnel
+- [ ] Viết `sources/clickstream/generate.py`: sinh log JSON Lines, đủ các event `view_product, add_to_cart, begin_checkout, purchase`, có `session_id, device, utm_source` — và `product_id / customer_id` trong log **phải khớp với products/customers thật** để về sau join được với fact orders làm funnel
 
 #### 1D. Scale lên Big Data — làm sau, khi pipeline đã đúng (cuối Giai đoạn 5 hoặc Giai đoạn 8)
 - [ ] Olist gốc chỉ ~100k orders / ~112k order_items — đủ để build và kiểm chứng toàn bộ logic, **nhưng chưa đủ gọi là Big Data**. Đừng để việc scale làm chậm MVP.
