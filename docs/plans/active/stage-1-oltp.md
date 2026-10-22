@@ -46,6 +46,7 @@ Out of scope:
 
 - [x] Product source paths separated from Harness `scripts/` in the plan and README.
 - [x] SQLAlchemy/Alembic scaffolding is in place; the user is editing models and will generate the first revision.
+- [x] Reviewed the nine source models, their core foreign keys, composite keys and indexes; CSV-level validation remains pending.
 - [ ] Olist CSVs inspected, including headers, row counts and key uniqueness.
 - [ ] Complete models and migrations applied and verified on local PostgreSQL.
 - [ ] Loader, baseline queries and simulator implemented and validated.
@@ -60,6 +61,7 @@ Out of scope:
 ## Validation
 
 - 2026-10-22: The earlier `customers` example revision upgraded, passed `alembic check`, downgraded and upgraded again in a temporary local PostgreSQL database. That revision has since been removed; the temporary database was removed and the main `ecommerce` database was not migrated.
+- 2026-10-22: All nine current models configured successfully; six foreign keys and both composite keys were checked, and every table compiled for PostgreSQL. No migration or database change was run.
 - Focused proof: migration round trip and model/schema agreement, then source-to-target row counts, quarantine accounting and simulator invariants.
 - Integration proof: run the load and simulator against local PostgreSQL, then verify RDS separately when provisioned.
 - Repository checks: `git diff --check`, path references and clean credential handling.
