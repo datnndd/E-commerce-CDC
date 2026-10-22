@@ -32,7 +32,7 @@ Out of scope:
 ## Approach
 
 1. Keep root `scripts/` for Harness tasks; place Stage 1 product files under `sources/`.
-2. Use the first `customers` model and migration as a provisional example; inspect the downloaded Olist CSVs before finalizing types, keys or status mappings for the whole schema.
+2. Inspect the downloaded Olist CSVs and review all models, keys and status mappings before generating the first Alembic revision.
 3. Implement and verify models and migrations locally, then the loader, baseline queries and simulator in that order.
 4. Resolve the deletion and price-change model before implementing simulator behavior.
 
@@ -45,7 +45,7 @@ Out of scope:
 ## Progress
 
 - [x] Product source paths separated from Harness `scripts/` in the plan and README.
-- [x] First `customers` SQLAlchemy model and Alembic migration added as a worked example.
+- [x] SQLAlchemy/Alembic scaffolding is in place; the user is editing models and will generate the first revision.
 - [ ] Olist CSVs inspected, including headers, row counts and key uniqueness.
 - [ ] Complete models and migrations applied and verified on local PostgreSQL.
 - [ ] Loader, baseline queries and simulator implemented and validated.
@@ -54,11 +54,12 @@ Out of scope:
 ## Decisions
 
 - 2026-10-22: Place source-system code in `sources/oltp/` and `sources/clickstream/`; leave root `scripts/` to the Harness as documented in `docs/README.md`.
-- 2026-10-22: Use SQLAlchemy models and reviewed Alembic migrations for OLTP schema changes. The first `customers` table is an example pending CSV profiling; do not add deletion semantics yet.
+- 2026-10-22: Use SQLAlchemy models and reviewed Alembic migrations for OLTP schema changes. Do not add deletion semantics until decided.
+- 2026-10-22: Removed the example `customers` revision so the user can generate the initial revision from their own reviewed models. The main `ecommerce` database is empty and has no Alembic version table.
 
 ## Validation
 
-- 2026-10-22: `customers` migration upgraded, passed `alembic check`, downgraded and upgraded again in a temporary local PostgreSQL database. The temporary database was removed; the main `ecommerce` database was not migrated.
+- 2026-10-22: The earlier `customers` example revision upgraded, passed `alembic check`, downgraded and upgraded again in a temporary local PostgreSQL database. That revision has since been removed; the temporary database was removed and the main `ecommerce` database was not migrated.
 - Focused proof: migration round trip and model/schema agreement, then source-to-target row counts, quarantine accounting and simulator invariants.
 - Integration proof: run the load and simulator against local PostgreSQL, then verify RDS separately when provisioned.
 - Repository checks: `git diff --check`, path references and clean credential handling.
