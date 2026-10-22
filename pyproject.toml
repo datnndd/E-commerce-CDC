@@ -2,7 +2,7 @@
 name = "ecommerce-cdc-lakehouse"
 version = "0.1.0"
 description = "Local tooling for an e-commerce CDC lakehouse demo"
-requires-python = ">=3.11,<3.12"
+requires-python = ">=3.13,<3.14"
 dependencies = [
     "dbt-databricks>=1.10,<1.12",
     "faker>=37,<39",

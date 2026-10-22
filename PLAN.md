@@ -54,8 +54,8 @@
 - [x] Chọn S3 bucket làm nơi lưu Bronze, và dùng Unity Catalog external location cho các prefix `silver/`, `gold/` khi tạo bảng Delta. Đặt lifecycle/xoá dữ liệu demo có chủ đích trước khi scale.
 - [x] Tạo IAM role chỉ cho bucket project, trust Unity Catalog bằng external ID và self-assume; tạo storage credential và external location riêng. Không tải access key dài hạn vào repo hay `.env`. CLI local/credential tạm thời sẽ cấu hình trước Giai đoạn 2.
 - [x] Xác nhận Databricks Free Edition metastore ở `us-east-2`, SQL warehouse và external location tới S3 `ap-southeast-1` hoạt động. Người dùng chọn giữ AWS ở Singapore và chấp nhận kết nối liên Region. Free Edition chỉ có serverless và không hỗ trợ custom workspace storage location; external location riêng đã được xác minh. RDS PostgreSQL được tạo ở Giai đoạn 1 khi DDL và lựa chọn VPC/chi phí đã rõ.
-- [x] Viết `compose.yaml` cho Postgres 15 local (đặt `wal_level=logical`) + Airflow local.
-- [x] Cài và kiểm tra Python 3.11, dbt-databricks, pyspark, faker; dùng AWS CLI có sẵn trong CloudShell cho kiểm tra giai đoạn 0. Cấu hình CLI local trước khi viết ingestion ở Giai đoạn 2.
+- [x] Viết `compose.yaml` cho Postgres 18.6 local (đặt `wal_level=logical`) + Airflow 3.3.2 local.
+- [x] Cài và kiểm tra Python 3.13, dbt-databricks, pyspark, faker; dùng AWS CLI có sẵn trong CloudShell cho kiểm tra giai đoạn 0. Cấu hình CLI local trước khi viết ingestion ở Giai đoạn 2.
 
 ### Done khi
 - [x] `docker compose up -d` chạy được Postgres + Airflow, vào được Airflow UI

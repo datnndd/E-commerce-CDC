@@ -69,3 +69,7 @@ Out of scope:
 ## Result
 
 Local setup, AWS S3 smoke checks, Databricks `SELECT 1`, and the cross-Region external location passed. The initial project commit reached GitHub before the user requested local-only commits; subsequent commits remain local until requested otherwise.
+
+## Version Refresh (2026-10-22)
+
+The local stack now uses PostgreSQL 18.6 and Python 3.13 (Airflow image Python 3.13.15); Airflow remains 3.3.2. The PostgreSQL 15 volume remains available for recovery. Verified PostgreSQL 18.6 with `wal_level=logical`, Airflow database access and HTTP 200, and the locked dbt/PySpark tools on local Python 3.13.14.

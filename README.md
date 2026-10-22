@@ -1,10 +1,10 @@
 # E-commerce CDC Lakehouse
 
-Portfolio project in progress. The target pipeline is PostgreSQL OLTP → S3 Bronze → Databricks Delta Silver/Gold with dbt-databricks → dashboard, orchestrated by Airflow. The local environment currently runs PostgreSQL 15 and Airflow; data loading and pipeline DAGs are planned for later stages in [PLAN.md](PLAN.md).
+Portfolio project in progress. The target pipeline is PostgreSQL OLTP → S3 Bronze → Databricks Delta Silver/Gold with dbt-databricks → dashboard, orchestrated by Airflow. The local environment currently runs PostgreSQL 18.6 and Airflow 3.3.2; data loading and pipeline DAGs are planned for later stages in [PLAN.md](PLAN.md).
 
 ## Stage 0: local setup
 
-Prerequisites: Docker Desktop with Compose, and Python 3.11 with [uv](https://docs.astral.sh/uv/) for the Python tools. Allow enough Docker memory for Airflow.
+Prerequisites: Docker Desktop with Compose, and Python 3.13 with [uv](https://docs.astral.sh/uv/) for the Python tools. Allow enough Docker memory for Airflow.
 
 On Windows PowerShell:
 
@@ -34,6 +34,8 @@ uv run dbt --version
 ```
 
 `SHOW wal_level` should return `logical`. On macOS or Linux, `make test` runs the PostgreSQL checks. Stop the local services with `docker compose down`; named volumes retain the local data.
+
+The PostgreSQL 18 image uses a new named volume, `postgres18_data`. The earlier PostgreSQL 15 volume is retained for recovery; it is not mounted into PostgreSQL 18.
 
 The Compose stack is for local development. Keep `.env`, cloud credentials, and generated Airflow passwords out of Git.
 
