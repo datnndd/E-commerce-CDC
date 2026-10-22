@@ -1,1 +1,44 @@
-# E-commerce-CDC
+# E-commerce CDC Lakehouse
+
+Portfolio project in progress. The target pipeline is PostgreSQL OLTP → S3 Bronze → Databricks Delta Silver/Gold with dbt-databricks → dashboard, orchestrated by Airflow. The local environment currently runs PostgreSQL 15 and Airflow; data loading and pipeline DAGs are planned for later stages in [PLAN.md](PLAN.md).
+
+## Stage 0: local setup
+
+Prerequisites: Docker Desktop with Compose, and Python 3.11 with [uv](https://docs.astral.sh/uv/) for the Python tools. Allow enough Docker memory for Airflow.
+
+On Windows PowerShell:
+
+```powershell
+Copy-Item .env.example .env
+# Replace POSTGRES_PASSWORD in .env with a private local password.
+docker compose up -d
+uv sync --frozen
+```
+
+On macOS or Linux, use `cp .env.example .env`, set a private password, then run `make up` (or `docker compose up -d`) and `uv sync --frozen`.
+
+PostgreSQL listens only on `localhost:5432` by default. The database, username and host port come from `.env`. Airflow is at [http://localhost:8080](http://localhost:8080), also bound to localhost. Its initial `admin` password is generated inside the container; read it locally with:
+
+```powershell
+docker compose exec airflow cat /opt/airflow/simple_auth_manager_passwords.json.generated
+```
+
+Local checks:
+
+```powershell
+docker compose ps
+docker compose exec postgres sh -c 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc "SHOW wal_level"'
+uv run python -c "import faker, pyspark; print('Python tooling OK')"
+uv run dbt --version
+```
+
+`SHOW wal_level` should return `logical`. On macOS or Linux, `make test` runs the PostgreSQL checks. Stop the local services with `docker compose down`; named volumes retain the local data.
+
+The Compose stack is for local development. Keep `.env`, cloud credentials, and generated Airflow passwords out of Git.
+
+## Stage 0 cloud status
+
+AWS Console and CloudShell access in `ap-southeast-1` have been checked. An existing monthly AWS Budget alert is active. The project S3 bucket has Block Public Access, ACLs disabled, and default SSE-S3 encryption. A small object was uploaded, inspected, and deleted using the AWS CLI in CloudShell. The bucket name and cloud credentials are intentionally kept out of this repository.
+
+Databricks Free Edition CLI login is configured outside the repository. `SELECT 1` succeeded on its serverless SQL warehouse, which was then stopped. The workspace metastore is in `us-east-2`; the project S3 bucket stays in `ap-southeast-1` by choice. A project-scoped IAM role, Unity Catalog storage credential and external location were created. Databricks validation passed `READ`, `LIST`, `WRITE` and `DELETE` against that bucket. This cross-Region path can add transfer cost and latency; measure both before scaling. No pipeline dataset has been loaded yet.

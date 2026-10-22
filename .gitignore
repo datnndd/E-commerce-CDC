@@ -1,3 +1,19 @@
 # Harness core maintenance binary
 scripts/bin/harness
 scripts/bin/harness.exe
+
+.env
+.env.*
+!.env.example
+*.json.key
+*service-account*.json
+*credentials*.json
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+target/
+dbt_packages/
+logs/
+airflow.db
+simple_auth_manager_passwords.json.generated
