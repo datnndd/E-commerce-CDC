@@ -41,7 +41,21 @@ The Compose stack is for local development. Keep `.env`, cloud credentials, and 
 
 ## Project code layout
 
-`scripts/` is reserved for repository bootstrap and validation maintained by the Harness. Project data-source code belongs in `sources/`: `sources/oltp/` will hold PostgreSQL DDL, Olist loading and OLTP simulation; `sources/clickstream/` will hold the event generator. `ingestion/` receives source changes for Bronze, while `spark_jobs/`, `dbt_project/` and `airflow/dags/` own later transformation and orchestration stages. The source code files are planned for Stage 1 and are not implemented yet.
+`scripts/` is reserved for repository bootstrap and validation maintained by the Harness. Project data-source code belongs in `sources/`: `sources/oltp/` holds SQLAlchemy models and Alembic migrations, with Olist loading and OLTP simulation to follow; `sources/clickstream/` will hold the event generator. `ingestion/` receives source changes for Bronze, while `spark_jobs/`, `dbt_project/` and `airflow/dags/` own later transformation and orchestration stages.
+
+## Stage 1: first OLTP table
+
+The first worked example is [`customers`](sources/oltp/models.py), with a matching [Alembic revision](sources/oltp/migrations/versions/20261022_0001_customers.py). From the repository root, with `.env` configured and PostgreSQL running:
+
+```powershell
+uv sync --frozen
+uv run alembic -c sources/oltp/alembic.ini upgrade head
+uv run alembic -c sources/oltp/alembic.ini current
+```
+
+For the next table, add a mapped class to `models.py`, then generate a candidate migration with `uv run alembic -c sources/oltp/alembic.ini revision --autogenerate -m "add sellers"`. Inspect and correct the generated migration before `upgrade head`; Alembic cannot infer every rename, data migration or business rule. Keep each reviewed revision in Git. `uv run alembic -c sources/oltp/alembic.ini check` reports whether the models and applied schema differ.
+
+The sample treats `customer_id` as the primary key. `customer_unique_id` identifies a person across orders and is indexed, but is not unique in this table. The ZIP prefix is text so leading zeros survive. Confirm ID lengths, nullability and other types against the downloaded CSV before extending the schema. Olist has no `created_at` or `updated_at` for customers: the future loader must set both to an explicit snapshot timestamp, and every simulated update must advance `updated_at`. The sample intentionally has no deletion column or delete operation while the Stage 1 deletion policy is unresolved. Alembic defines schema changes; the later CSV loader will use PostgreSQL `COPY` for rows.
 
 ## Stage 0 cloud status
 
