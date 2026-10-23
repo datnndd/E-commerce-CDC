@@ -102,13 +102,13 @@
 - [ ] Khi Bronze → Silver → Gold đã xử lý xong initial snapshot, đối chiếu các chỉ số cùng định nghĩa và cùng `snapshot_id`; lưu chênh lệch và kiểm tra theo từng tầng nếu lệch. Việc này là tiêu chí kiểm chứng của các giai đoạn downstream, không chặn việc hoàn thành Giai đoạn 1.
 
 #### 1C. Gen phần mới — bám trên dữ liệu thật (Ngày 3–4)
-- [ ] Phát triển và chạy thử simulator trên DB kiểm thử tách biệt, được nạp từ cùng snapshot. Chỉ chạy simulator trên DB nguồn chính sau khi initial snapshot đã đi qua Bronze/Silver/Gold và đối soát 1B đạt; sau đó đối soát thay đổi theo watermark, không quét toàn bộ OLTP sau mỗi lần chạy.
-- [ ] Viết `sources/oltp/simulate_new_day.py` — **script quan trọng nhất của giai đoạn này.** Khác với tự gen từ đầu: mọi bản ghi mới phải tham chiếu customers/products/sellers **có thật** trong DB:
+- [x] Phát triển và chạy thử simulator trên DB kiểm thử tách biệt, được nạp từ cùng snapshot. Chỉ chạy simulator trên DB nguồn chính sau khi initial snapshot đã đi qua Bronze/Silver/Gold và đối soát 1B đạt; sau đó đối soát thay đổi theo watermark, không quét toàn bộ OLTP sau mỗi lần chạy.
+- [x] Viết `sources/oltp/simulate_new_day.py` — **script quan trọng nhất của giai đoạn này.** Khác với tự gen từ đầu: mọi bản ghi mới phải tham chiếu customers/products/sellers **có thật** trong DB:
   - Thêm orders mới (số lượng tuỳ scale đang chạy, xem 1D) cho khách cũ (để RFM/retention có ý nghĩa) + một phần khách mới bằng Faker
-  - Update giá `order_items`/products: đổi giá 3% products thật, đổi `city/state` của 2% customers thật → tạo sự kiện cho SCD Type 2 ở Giai đoạn 4
-  - Xoá (hard delete) 0.1% customers + soft-cancel một số orders → tạo sự kiện DELETE cho CDC ở Giai đoạn 2/8
+  - Đổi `products.current_price` của 3% products thật (không sửa giá order_items lịch sử), đổi địa chỉ của 2% customers thật → tạo sự kiện cho SCD Type 2 ở Giai đoạn 4
+  - Đánh dấu xóa mềm 0.1% customers bằng `is_deleted/deleted_at` + tạo một số orders trạng thái `canceled`; CDC polling nhận các bản ghi này qua `updated_at` như UPDATE. DELETE vật lý chỉ xét khi có CDC đọc log ở Giai đoạn 8.
   - Mọi thay đổi đều phải set `updated_at = NOW()`
-- [ ] Viết `sources/clickstream/generate.py`: sinh log JSON Lines, đủ các event `view_product, add_to_cart, begin_checkout, purchase`, có `session_id, device, utm_source` — và `product_id / customer_id` trong log **phải khớp với products/customers thật** để về sau join được với fact orders làm funnel
+- [x] Viết `sources/clickstream/generate.py`: sinh log JSON Lines, đủ các event `view_product, add_to_cart, begin_checkout, purchase`, có `session_id, device, utm_source` — và `product_id / customer_id` trong log **phải khớp với products/customers thật** để về sau join được với fact orders làm funnel
 
 #### 1D. Scale lên Big Data — làm sau, khi pipeline đã đúng (cuối Giai đoạn 5 hoặc Giai đoạn 8)
 - [ ] Olist gốc chỉ ~100k orders / ~112k order_items — đủ để build và kiểm chứng toàn bộ logic, **nhưng chưa đủ gọi là Big Data**. Đừng để việc scale làm chậm MVP.
@@ -118,7 +118,7 @@
 ### Done khi
 - [x] Đếm được số dòng từng bảng khớp số dòng Olist gốc (sau khi trừ record quarantine đã ghi log)
 - [x] Đã lưu SQL, metadata và kết quả 1B theo `snapshot_id` để đối soát khi có Silver/Gold; DB nguồn chính chưa bị simulator thay đổi
-- [ ] Chạy `simulate_new_day.py` 1 lần **trên DB kiểm thử tách biệt**: số orders tăng, có products thật bị đổi giá (kiểm tra bằng `updated_at` mới nhất), hành vi xoá khách hàng được kiểm chứng theo thiết kế đã chốt, và **không có order mới nào tham chiếu customer/product không tồn tại**
+- [x] Chạy `simulate_new_day.py` 1 lần **trên DB kiểm thử tách biệt**: số orders tăng, có products thật bị đổi giá (kiểm tra bằng `updated_at` mới nhất), hành vi xóa mềm khách hàng được kiểm chứng, và **không có order mới nào tham chiếu customer/product không tồn tại**
 
 ### Rủi ro thường gặp
 - Quên bổ sung `updated_at` khi nạp Olist → Giai đoạn 2 không có mốc nào để CDC polling. Đây là việc đầu tiên phải làm sau khi nạp.

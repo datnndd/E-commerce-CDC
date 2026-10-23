@@ -3,7 +3,7 @@
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, DateTime, Float, ForeignKey, Identity, Index, Integer, Numeric, String, Text
+from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, Identity, Index, Integer, Numeric, String, Text, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -24,6 +24,8 @@ class Customer(Base):
     customer_zip_code_prefix: Mapped[str] = mapped_column(String(5), nullable=False)
     customer_city: Mapped[str] = mapped_column(Text, nullable=False)
     customer_state: Mapped[str] = mapped_column(String(2), nullable=False)
+    is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
@@ -91,6 +93,7 @@ class Product(Base):
     product_length_cm: Mapped[int | None] = mapped_column(Integer)
     product_height_cm: Mapped[int | None] = mapped_column(Integer)
     product_width_cm: Mapped[int | None] = mapped_column(Integer)
+    current_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 

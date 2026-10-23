@@ -53,7 +53,7 @@ Out of scope:
 - [x] Snapshot loader passed full load and orphan quarantine checks in isolated PostgreSQL databases.
 - [x] Main local database loaded and row counts reconciled.
 - [x] Stage 1B baseline queries, CSV identities and snapshot metadata recorded under `olist_20261023T032906Z_99dc95d7`.
-- [ ] Simulator implemented and validated on an isolated database without changing the main source.
+- [x] Simulator implemented and validated on an isolated database without changing the main source.
 - [ ] RDS access and load verified if included in this stage.
 
 ## Decisions
@@ -63,6 +63,7 @@ Out of scope:
 - 2026-10-22: Removed the example `customers` revision so the user can generate the initial revision from their own reviewed models. The main `ecommerce` database is empty and has no Alembic version table.
 - 2026-10-23: User applied the initial nine-table revision. Interpret naive Olist timestamps in `America/Sao_Paulo` when loading into `timestamptz`.
 - 2026-10-23: Stage 1B records a versioned source baseline; Stage 1C tests the simulator in isolation. Main-source simulation waits for initial Bronze/Silver/Gold reconciliation.
+- 2026-10-23: Stage 1C uses `products.current_price` for future sales without rewriting historical order-item prices, and `customers.is_deleted/deleted_at` for observable soft deletion. The user approved both choices. Main-source schema and snapshot remain unchanged pending reconciliation.
 
 ## Validation
 
@@ -72,6 +73,7 @@ Out of scope:
 - 2026-10-23: Full `COPY` load in an isolated migrated PostgreSQL database matched every CSV count with zero quarantine rows. A separate orphan-order test quarantined one invalid row and retained its valid parent. Both test databases were removed; the main database was empty at that point and was loaded afterward.
 - 2026-10-23: Main `ecommerce` database has all nine CSV row counts; its load report lists zero quarantined rows. The 1B report records nine CSV SHA-256 hashes and all SQL/results in one repeatable-read transaction. Eight raw statuses sum to 99,441 orders; 24 purchase months sum to 112,650 items and BRL 13,591,643.70 in item price; six orphan counts are zero. No row has `updated_at` after the load snapshot timestamp.
 - 2026-10-23: A deliberately mismatched load-report row count was rejected without writing a baseline file.
+- 2026-10-23: Restored the frozen source into `ecommerce_1c_test`, applied the Stage 1C migration, and simulated 20 orders. Orders rose 99,441 to 99,461; 989 product prices changed; 99 customers were soft-deleted; 80 clickstream events were emitted. New-order payment totals matched items plus freight, FK orphan counts were zero, and original item-price total stayed BRL 13,591,643.70. The main database still has 99,441 orders.
 - Focused proof: migration round trip and model/schema agreement, then source-to-target row counts, quarantine accounting and simulator invariants.
 - Integration proof: run the load on the main local PostgreSQL database, capture its baseline, and test the simulator in a separate database. Verify RDS separately when provisioned; downstream reconciliation precedes main-source simulation.
 - Repository checks: `git diff --check`, path references and clean credential handling.
