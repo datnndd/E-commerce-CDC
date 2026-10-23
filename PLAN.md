@@ -86,11 +86,11 @@
 ### Việc cần làm
 
 #### 1A. Nạp dữ liệu thật làm initial snapshot (Ngày 2)
-- [ ] Tải **Brazilian E-Commerce (Olist)** từ Kaggle: 9 file CSV, ~100k orders giai đoạn 2016–2018, có sẵn customers, sellers, products, orders, order_items, payments, reviews + bảng dịch category sang tiếng Anh
-- [ ] Thiết kế model SQLAlchemy và migration Alembic trong `sources/oltp/` cho các bảng theo schema Olist; tự tạo migration đầu tiên sau khi kiểm tra model, quan hệ và CSV nguồn
+- [x] Tải **Brazilian E-Commerce (Olist)** từ Kaggle: 9 file CSV, ~100k orders giai đoạn 2016–2018, có sẵn customers, sellers, products, orders, order_items, payments, reviews + bảng dịch category sang tiếng Anh
+- [x] Thiết kế model SQLAlchemy và migration Alembic trong `sources/oltp/` cho các bảng theo schema Olist; migration đầu tiên đã được tạo và áp dụng vào PostgreSQL local
   - PK, FK, index trên các FK hay join
   - Map `orders.order_status` của Olist về tập dùng trong project: `created, paid, shipped, delivered, cancelled, refunded` (lưu cả status gốc nếu cần đối chiếu)
-- [ ] Viết `sources/oltp/load_olist.py`: nạp CSV bằng `COPY` (không insert từng dòng), kiểm tra FK integrity sau khi nạp — record mồ côi (order_item không có order, review không có order...) thì ghi log và loại/quarantine, không nạp bừa
+- [x] Viết `sources/oltp/load_olist.py`: nạp CSV bằng `COPY` (không insert từng dòng), kiểm tra FK integrity sau khi nạp — record mồ côi (order_item không có order, review không có order...) thì ghi log và loại/quarantine, không nạp bừa. Đã kiểm chứng trên DB tạm; DB chính chưa được nạp.
 - [ ] **Bổ sung cột mà Olist không có** — bước bắt buộc, thiếu là CDC không chạy được:
   - Thêm `created_at, updated_at` cho mọi bảng: khởi tạo `updated_at =` timestamp nghiệp vụ gần nhất của bản ghi đó (ví dụ orders lấy `order_purchase_timestamp`, products/customers lấy thời điểm snapshot)
   - Ghi rõ trong README: đây là mốc snapshot — mọi thay đổi có `updated_at` lớn hơn mốc này đều do simulator ở 1C tạo ra

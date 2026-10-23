@@ -45,19 +45,25 @@ The Compose stack is for local development. Keep `.env`, cloud credentials, and 
 
 ## Stage 1: first OLTP table
 
-The OLTP table definitions are in [`models.py`](sources/oltp/models.py). The Alembic configuration is ready, but the first revision is intentionally left for you to generate after reviewing the models and their foreign keys. From the repository root, with `.env` configured and PostgreSQL running:
+The OLTP table definitions are in [`models.py`](sources/oltp/models.py). The initial Alembic revision has been generated and applied locally. From the repository root, with `.env` configured and PostgreSQL running, verify the schema with:
 
 ```powershell
 uv sync --frozen
-uv run alembic -c sources/oltp/alembic.ini revision --autogenerate -m "initial oltp schema"
-# Review the new file in sources/oltp/migrations/versions/ before applying it.
-uv run alembic -c sources/oltp/alembic.ini upgrade head
 uv run alembic -c sources/oltp/alembic.ini current
+uv run alembic -c sources/oltp/alembic.ini check
 ```
 
 For later changes, edit a mapped class in `models.py`, then generate a candidate migration with `uv run alembic -c sources/oltp/alembic.ini revision --autogenerate -m "describe change"`. Inspect and correct every generated migration before `upgrade head`; Alembic cannot infer every rename, data migration or business rule. Keep each reviewed revision in Git. `uv run alembic -c sources/oltp/alembic.ini check` reports whether the models and applied schema differ.
 
-The `customers` model treats `customer_id` as the primary key. `customer_unique_id` identifies a person across orders and is indexed, but is not unique in this table. The ZIP prefix is text so leading zeros survive. Confirm ID lengths, nullability and other types against the downloaded CSV before generating the first revision. Olist has no `created_at` or `updated_at` for customers: the future loader must set both to an explicit snapshot timestamp, and every simulated update must advance `updated_at`. The deletion policy remains unresolved. Alembic defines schema changes; the later CSV loader will use PostgreSQL `COPY` for rows.
+The `customers` model treats `customer_id` as the primary key. `customer_unique_id` identifies a person across orders and is indexed, but is not unique in this table. The ZIP prefix is text so leading zeros survive. The deletion policy remains unresolved.
+
+The nine Olist CSVs in `olist_dataset/` can be loaded into an **empty** migrated database with:
+
+```powershell
+uv run python -m sources.oltp.load_olist --dataset olist_dataset
+```
+
+The loader uses PostgreSQL `COPY` in one transaction, checks source headers and foreign keys, and saves row counts plus any rejected rows under `logs/olist_load/`. A nonempty source table causes it to stop; it does not replace existing data. Olist timestamps have no timezone, so the loader interprets them in `America/Sao_Paulo` and writes UTC instants to PostgreSQL. For orders, `created_at` is purchase time and `updated_at` is the latest recorded order event; for reviews, they are creation and answer times. Other tables use one UTC snapshot timestamp for both fields. The estimated delivery date is a forecast and is not used as an update time.
 
 ## Stage 0 cloud status
 

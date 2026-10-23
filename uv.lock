@@ -446,6 +446,7 @@ dependencies = [
     { name = "pyspark" },
     { name = "python-dotenv" },
     { name = "sqlalchemy" },
+    { name = "tzdata" },
 ]
 
 [package.metadata]
@@ -457,6 +458,7 @@ requires-dist = [
     { name = "pyspark", specifier = ">=4.0,<5" },
     { name = "python-dotenv", specifier = ">=1,<2" },
     { name = "sqlalchemy", specifier = ">=2.0,<2.1" },
+    { name = "tzdata", specifier = ">=2025" },
 ]
 
 [[package]]

@@ -47,8 +47,10 @@ Out of scope:
 - [x] Product source paths separated from Harness `scripts/` in the plan and README.
 - [x] SQLAlchemy/Alembic scaffolding is in place; the user is editing models and will generate the first revision.
 - [x] Reviewed the nine source models, their core foreign keys, composite keys and indexes; CSV-level validation remains pending.
-- [ ] Olist CSVs inspected, including headers, row counts and key uniqueness.
-- [ ] Complete models and migrations applied and verified on local PostgreSQL.
+- [x] Olist CSVs inspected, including headers, row counts and key uniqueness.
+- [x] Initial models and migration applied and verified on local PostgreSQL.
+- [x] Snapshot loader passed full load and orphan quarantine checks in isolated PostgreSQL databases.
+- [ ] Main local database loaded and row counts reconciled.
 - [ ] Loader, baseline queries and simulator implemented and validated.
 - [ ] RDS access and load verified if included in this stage.
 
@@ -57,11 +59,14 @@ Out of scope:
 - 2026-10-22: Place source-system code in `sources/oltp/` and `sources/clickstream/`; leave root `scripts/` to the Harness as documented in `docs/README.md`.
 - 2026-10-22: Use SQLAlchemy models and reviewed Alembic migrations for OLTP schema changes. Do not add deletion semantics until decided.
 - 2026-10-22: Removed the example `customers` revision so the user can generate the initial revision from their own reviewed models. The main `ecommerce` database is empty and has no Alembic version table.
+- 2026-10-23: User applied the initial nine-table revision. Interpret naive Olist timestamps in `America/Sao_Paulo` when loading into `timestamptz`.
 
 ## Validation
 
 - 2026-10-22: The earlier `customers` example revision upgraded, passed `alembic check`, downgraded and upgraded again in a temporary local PostgreSQL database. That revision has since been removed; the temporary database was removed and the main `ecommerce` database was not migrated.
 - 2026-10-22: All nine current models configured successfully; six foreign keys and both composite keys were checked, and every table compiled for PostgreSQL. No migration or database change was run.
+- 2026-10-23: The nine CSVs have 99,441 customers, 1,000,163 geolocation rows, 71 translations, 32,951 products, 3,095 sellers, 99,441 orders, 112,650 items, 103,886 payments and 99,224 reviews. Source keys for the core tables and six FK relationships have no duplicates/orphans. `review_id` repeats 814 times; two product categories lack translations.
+- 2026-10-23: Full `COPY` load in an isolated migrated PostgreSQL database matched every CSV count with zero quarantine rows. A separate orphan-order test quarantined one invalid row and retained its valid parent. Both test databases were removed; the main database remains empty.
 - Focused proof: migration round trip and model/schema agreement, then source-to-target row counts, quarantine accounting and simulator invariants.
 - Integration proof: run the load and simulator against local PostgreSQL, then verify RDS separately when provisioned.
 - Repository checks: `git diff --check`, path references and clean credential handling.
