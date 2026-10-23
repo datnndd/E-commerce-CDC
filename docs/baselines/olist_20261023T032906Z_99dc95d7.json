@@ -1,0 +1,624 @@
+{
+  "snapshot_id": "olist_20261023T032906Z_99dc95d7",
+  "source_database": "ecommerce",
+  "alembic_revision": "b5e79439fda1",
+  "snapshot_at_utc": "2026-10-23T03:29:06.373817+00:00",
+  "captured_at_utc": "2026-10-23T04:18:29.751308+00:00",
+  "source_timezone": "America/Sao_Paulo",
+  "csv_files": {
+    "customers": {
+      "file": "olist_customers_dataset.csv",
+      "bytes": 9033957,
+      "sha256": "983a422239e1712ded753b3bf9ecf47dc73f144d306029dcfa99e70a226883d2",
+      "source_rows": 99441
+    },
+    "geolocation": {
+      "file": "olist_geolocation_dataset.csv",
+      "bytes": 61273883,
+      "sha256": "b514f6fc991b9566aeba02aa5d67e2c3630f034b60a0e05aa0d082a3b66d88d6",
+      "source_rows": 1000163
+    },
+    "product_category_name_translation": {
+      "file": "product_category_name_translation.csv",
+      "bytes": 2613,
+      "sha256": "a81f0d1f27b27e7293f761bc79e3ce8f348ee39c4b3ed3e49bde38f478586278",
+      "source_rows": 71
+    },
+    "products": {
+      "file": "olist_products_dataset.csv",
+      "bytes": 2379446,
+      "sha256": "3e6569628a17fbc75fd206ee357b59e20364b9afa90f5b6cd5b4d624c58aa9cc",
+      "source_rows": 32951
+    },
+    "sellers": {
+      "file": "olist_sellers_dataset.csv",
+      "bytes": 174703,
+      "sha256": "1f643d2b950373b85735e7794b20986f528d7a000432e7c6f9bcbb44d0846a0e",
+      "source_rows": 3095
+    },
+    "orders": {
+      "file": "olist_orders_dataset.csv",
+      "bytes": 17654914,
+      "sha256": "8df58ef3d2d7e9944010f7beecd9b75367f5588ec6e3c91cec19ae3345ef9ecf",
+      "source_rows": 99441
+    },
+    "order_items": {
+      "file": "olist_order_items_dataset.csv",
+      "bytes": 15438671,
+      "sha256": "0bc4d068c4fe38cbb01bd90e8746e3c613fe7b4baef75fab7b0e329701c3e279",
+      "source_rows": 112650
+    },
+    "order_payments": {
+      "file": "olist_order_payments_dataset.csv",
+      "bytes": 5777138,
+      "sha256": "4f713964f2815dbbaa40b9488268c55aac3627bfce5aa96cf58d1f3616de3cc0",
+      "source_rows": 103886
+    },
+    "order_reviews": {
+      "file": "olist_order_reviews_dataset.csv",
+      "bytes": 14451670,
+      "sha256": "012b61c7593e34f51fa614efdf802b9c7056ce6aae5307ddb93236e7cfc797d7",
+      "source_rows": 99224
+    }
+  },
+  "load_report": {
+    "customers": {
+      "source": 99441,
+      "loaded": 99441,
+      "quarantined": {}
+    },
+    "geolocation": {
+      "source": 1000163,
+      "loaded": 1000163,
+      "quarantined": {}
+    },
+    "product_category_name_translation": {
+      "source": 71,
+      "loaded": 71,
+      "quarantined": {}
+    },
+    "products": {
+      "source": 32951,
+      "loaded": 32951,
+      "quarantined": {}
+    },
+    "sellers": {
+      "source": 3095,
+      "loaded": 3095,
+      "quarantined": {}
+    },
+    "orders": {
+      "source": 99441,
+      "loaded": 99441,
+      "quarantined": {}
+    },
+    "order_items": {
+      "source": 112650,
+      "loaded": 112650,
+      "quarantined": {}
+    },
+    "order_payments": {
+      "source": 103886,
+      "loaded": 103886,
+      "quarantined": {}
+    },
+    "order_reviews": {
+      "source": 99224,
+      "loaded": 99224,
+      "quarantined": {}
+    }
+  },
+  "metrics": {
+    "table_counts": {
+      "definition": "Number of source rows in each OLTP table.",
+      "unit": "rows",
+      "sql": "SELECT 'customers' AS table_name, count(*) AS row_count FROM customers\nUNION ALL\nSELECT 'geolocation' AS table_name, count(*) AS row_count FROM geolocation\nUNION ALL\nSELECT 'product_category_name_translation' AS table_name, count(*) AS row_count FROM product_category_name_translation\nUNION ALL\nSELECT 'products' AS table_name, count(*) AS row_count FROM products\nUNION ALL\nSELECT 'sellers' AS table_name, count(*) AS row_count FROM sellers\nUNION ALL\nSELECT 'orders' AS table_name, count(*) AS row_count FROM orders\nUNION ALL\nSELECT 'order_items' AS table_name, count(*) AS row_count FROM order_items\nUNION ALL\nSELECT 'order_payments' AS table_name, count(*) AS row_count FROM order_payments\nUNION ALL\nSELECT 'order_reviews' AS table_name, count(*) AS row_count FROM order_reviews\nORDER BY table_name",
+      "rows": [
+        {
+          "table_name": "customers",
+          "row_count": 99441
+        },
+        {
+          "table_name": "geolocation",
+          "row_count": 1000163
+        },
+        {
+          "table_name": "order_items",
+          "row_count": 112650
+        },
+        {
+          "table_name": "order_payments",
+          "row_count": 103886
+        },
+        {
+          "table_name": "order_reviews",
+          "row_count": 99224
+        },
+        {
+          "table_name": "orders",
+          "row_count": 99441
+        },
+        {
+          "table_name": "product_category_name_translation",
+          "row_count": 71
+        },
+        {
+          "table_name": "products",
+          "row_count": 32951
+        },
+        {
+          "table_name": "sellers",
+          "row_count": 3095
+        }
+      ]
+    },
+    "orders_by_status": {
+      "definition": "Order count by the original Olist status; no status mapping applied.",
+      "unit": "orders",
+      "sql": "\n            SELECT order_status, count(*) AS order_count\n            FROM orders\n            GROUP BY order_status\n            ORDER BY order_status\n        ",
+      "rows": [
+        {
+          "order_status": "approved",
+          "order_count": 2
+        },
+        {
+          "order_status": "canceled",
+          "order_count": 625
+        },
+        {
+          "order_status": "created",
+          "order_count": 5
+        },
+        {
+          "order_status": "delivered",
+          "order_count": 96478
+        },
+        {
+          "order_status": "invoiced",
+          "order_count": 314
+        },
+        {
+          "order_status": "processing",
+          "order_count": 301
+        },
+        {
+          "order_status": "shipped",
+          "order_count": 1107
+        },
+        {
+          "order_status": "unavailable",
+          "order_count": 609
+        }
+      ]
+    },
+    "item_price_by_purchase_month": {
+      "definition": "Sum of order_items.price by order purchase month, across all order statuses; freight and payments excluded.",
+      "unit": "BRL, item price only",
+      "timezone": "America/Sao_Paulo",
+      "sql": "\n            SELECT date_trunc('month', o.order_purchase_timestamp AT TIME ZONE 'America/Sao_Paulo')::date AS purchase_month,\n                   count(*) AS item_count, sum(oi.price) AS item_price_total\n            FROM order_items AS oi\n            JOIN orders AS o ON o.order_id = oi.order_id\n            GROUP BY 1\n            ORDER BY 1\n        ",
+      "rows": [
+        {
+          "purchase_month": "2016-09-01",
+          "item_count": 6,
+          "item_price_total": "267.36"
+        },
+        {
+          "purchase_month": "2016-10-01",
+          "item_count": 363,
+          "item_price_total": "49507.66"
+        },
+        {
+          "purchase_month": "2016-12-01",
+          "item_count": 1,
+          "item_price_total": "10.90"
+        },
+        {
+          "purchase_month": "2017-01-01",
+          "item_count": 955,
+          "item_price_total": "120312.87"
+        },
+        {
+          "purchase_month": "2017-02-01",
+          "item_count": 1951,
+          "item_price_total": "247303.02"
+        },
+        {
+          "purchase_month": "2017-03-01",
+          "item_count": 3000,
+          "item_price_total": "374344.30"
+        },
+        {
+          "purchase_month": "2017-04-01",
+          "item_count": 2684,
+          "item_price_total": "359927.23"
+        },
+        {
+          "purchase_month": "2017-05-01",
+          "item_count": 4136,
+          "item_price_total": "506071.14"
+        },
+        {
+          "purchase_month": "2017-06-01",
+          "item_count": 3583,
+          "item_price_total": "433038.60"
+        },
+        {
+          "purchase_month": "2017-07-01",
+          "item_count": 4519,
+          "item_price_total": "498031.48"
+        },
+        {
+          "purchase_month": "2017-08-01",
+          "item_count": 4910,
+          "item_price_total": "573971.68"
+        },
+        {
+          "purchase_month": "2017-09-01",
+          "item_count": 4831,
+          "item_price_total": "624401.69"
+        },
+        {
+          "purchase_month": "2017-10-01",
+          "item_count": 5322,
+          "item_price_total": "664219.43"
+        },
+        {
+          "purchase_month": "2017-11-01",
+          "item_count": 8665,
+          "item_price_total": "1010271.37"
+        },
+        {
+          "purchase_month": "2017-12-01",
+          "item_count": 6308,
+          "item_price_total": "743914.17"
+        },
+        {
+          "purchase_month": "2018-01-01",
+          "item_count": 8208,
+          "item_price_total": "950030.36"
+        },
+        {
+          "purchase_month": "2018-02-01",
+          "item_count": 7672,
+          "item_price_total": "844178.71"
+        },
+        {
+          "purchase_month": "2018-03-01",
+          "item_count": 8217,
+          "item_price_total": "983213.44"
+        },
+        {
+          "purchase_month": "2018-04-01",
+          "item_count": 7975,
+          "item_price_total": "996647.75"
+        },
+        {
+          "purchase_month": "2018-05-01",
+          "item_count": 7925,
+          "item_price_total": "996517.68"
+        },
+        {
+          "purchase_month": "2018-06-01",
+          "item_count": 7078,
+          "item_price_total": "865124.31"
+        },
+        {
+          "purchase_month": "2018-07-01",
+          "item_count": 7092,
+          "item_price_total": "895507.22"
+        },
+        {
+          "purchase_month": "2018-08-01",
+          "item_count": 7248,
+          "item_price_total": "854686.33"
+        },
+        {
+          "purchase_month": "2018-09-01",
+          "item_count": 1,
+          "item_price_total": "145.00"
+        }
+      ]
+    },
+    "orphan_counts": {
+      "definition": "Rows in each child table whose referenced parent row is absent.",
+      "unit": "rows",
+      "sql": "\n            SELECT 'orders.customer_id -> customers' AS relationship, count(*) AS orphan_count\n            FROM orders c LEFT JOIN customers p ON p.customer_id = c.customer_id WHERE p.customer_id IS NULL\n            UNION ALL\n            SELECT 'order_items.order_id -> orders', count(*)\n            FROM order_items c LEFT JOIN orders p ON p.order_id = c.order_id WHERE p.order_id IS NULL\n            UNION ALL\n            SELECT 'order_items.product_id -> products', count(*)\n            FROM order_items c LEFT JOIN products p ON p.product_id = c.product_id WHERE p.product_id IS NULL\n            UNION ALL\n            SELECT 'order_items.seller_id -> sellers', count(*)\n            FROM order_items c LEFT JOIN sellers p ON p.seller_id = c.seller_id WHERE p.seller_id IS NULL\n            UNION ALL\n            SELECT 'order_payments.order_id -> orders', count(*)\n            FROM order_payments c LEFT JOIN orders p ON p.order_id = c.order_id WHERE p.order_id IS NULL\n            UNION ALL\n            SELECT 'order_reviews.order_id -> orders', count(*)\n            FROM order_reviews c LEFT JOIN orders p ON p.order_id = c.order_id WHERE p.order_id IS NULL\n            ORDER BY relationship\n        ",
+      "rows": [
+        {
+          "relationship": "order_items.order_id -> orders",
+          "orphan_count": 0
+        },
+        {
+          "relationship": "order_items.product_id -> products",
+          "orphan_count": 0
+        },
+        {
+          "relationship": "order_items.seller_id -> sellers",
+          "orphan_count": 0
+        },
+        {
+          "relationship": "order_payments.order_id -> orders",
+          "orphan_count": 0
+        },
+        {
+          "relationship": "order_reviews.order_id -> orders",
+          "orphan_count": 0
+        },
+        {
+          "relationship": "orders.customer_id -> customers",
+          "orphan_count": 0
+        }
+      ]
+    }
+  },
+  "exploration": {
+    "delivered_item_price_by_category_top10": {
+      "definition": "Top categories by delivered-order item price; untranslated categories use the source name.",
+      "unit": "BRL, item price only",
+      "sql": "\n            SELECT coalesce(t.product_category_name_english, p.product_category_name, '(missing)') AS category,\n                   count(*) AS item_count, sum(oi.price) AS item_price_total\n            FROM order_items oi\n            JOIN orders o ON o.order_id = oi.order_id\n            JOIN products p ON p.product_id = oi.product_id\n            LEFT JOIN product_category_name_translation t ON t.product_category_name = p.product_category_name\n            WHERE o.order_status = 'delivered'\n            GROUP BY 1 ORDER BY item_price_total DESC LIMIT 10\n        ",
+      "rows": [
+        {
+          "category": "health_beauty",
+          "item_count": 9465,
+          "item_price_total": "1233131.72"
+        },
+        {
+          "category": "watches_gifts",
+          "item_count": 5859,
+          "item_price_total": "1166176.98"
+        },
+        {
+          "category": "bed_bath_table",
+          "item_count": 10953,
+          "item_price_total": "1023434.76"
+        },
+        {
+          "category": "sports_leisure",
+          "item_count": 8431,
+          "item_price_total": "954852.55"
+        },
+        {
+          "category": "computers_accessories",
+          "item_count": 7644,
+          "item_price_total": "888724.61"
+        },
+        {
+          "category": "furniture_decor",
+          "item_count": 8160,
+          "item_price_total": "711927.69"
+        },
+        {
+          "category": "housewares",
+          "item_count": 6795,
+          "item_price_total": "615628.69"
+        },
+        {
+          "category": "cool_stuff",
+          "item_count": 3718,
+          "item_price_total": "610204.10"
+        },
+        {
+          "category": "auto",
+          "item_count": 4140,
+          "item_price_total": "578966.65"
+        },
+        {
+          "category": "toys",
+          "item_count": 4030,
+          "item_price_total": "471286.48"
+        }
+      ]
+    },
+    "canceled_order_rate": {
+      "definition": "Raw Olist status 'canceled' divided by all orders; 'unavailable' is separate.",
+      "unit": "percent of orders",
+      "sql": "\n            SELECT count(*) FILTER (WHERE order_status = 'canceled') AS canceled_orders,\n                   count(*) AS all_orders,\n                   round(100.0 * count(*) FILTER (WHERE order_status = 'canceled') / nullif(count(*), 0), 4) AS canceled_percent\n            FROM orders\n        ",
+      "rows": [
+        {
+          "canceled_orders": 625,
+          "all_orders": 99441,
+          "canceled_percent": "0.6285"
+        }
+      ]
+    },
+    "review_score_by_delivery_timing": {
+      "definition": "Review-row average for delivered orders with a delivery date, grouped by whether delivery exceeded its estimate.",
+      "unit": "review score, 1-5",
+      "sql": "\n            SELECT CASE WHEN o.order_delivered_customer_date > o.order_estimated_delivery_date\n                        THEN 'late' ELSE 'on_time' END AS delivery_timing,\n                   count(*) AS review_rows,\n                   round(avg(r.review_score)::numeric, 4) AS average_review_score\n            FROM order_reviews r JOIN orders o ON o.order_id = r.order_id\n            WHERE o.order_status = 'delivered' AND o.order_delivered_customer_date IS NOT NULL\n            GROUP BY 1 ORDER BY 1\n        ",
+      "rows": [
+        {
+          "delivery_timing": "late",
+          "review_rows": 7700,
+          "average_review_score": "2.5665"
+        },
+        {
+          "delivery_timing": "on_time",
+          "review_rows": 88653,
+          "average_review_score": "4.2937"
+        }
+      ]
+    },
+    "top_products_by_delivered_item_price": {
+      "definition": "Top products by sum of item price on delivered orders.",
+      "unit": "BRL, item price only",
+      "sql": "\n            SELECT oi.product_id, count(*) AS item_count, sum(oi.price) AS item_price_total\n            FROM order_items oi JOIN orders o ON o.order_id = oi.order_id\n            WHERE o.order_status = 'delivered'\n            GROUP BY oi.product_id ORDER BY item_price_total DESC, oi.product_id LIMIT 10\n        ",
+      "rows": [
+        {
+          "product_id": "bb50f2e236e5eea0100680137654686c",
+          "item_count": 194,
+          "item_price_total": "63560.00"
+        },
+        {
+          "product_id": "6cdd53843498f92890544667809f1595",
+          "item_count": 153,
+          "item_price_total": "53652.30"
+        },
+        {
+          "product_id": "d6160fb7873f184099d9bc95e30376af",
+          "item_count": 33,
+          "item_price_total": "45949.35"
+        },
+        {
+          "product_id": "d1c427060a0f73f6b889a5c7c61f2ac4",
+          "item_count": 332,
+          "item_price_total": "45620.56"
+        },
+        {
+          "product_id": "99a4788cb24856965c36a24e339b6058",
+          "item_count": 477,
+          "item_price_total": "42049.66"
+        },
+        {
+          "product_id": "3dd2a17168ec895c781a9191c1e95ad7",
+          "item_count": 272,
+          "item_price_total": "40782.80"
+        },
+        {
+          "product_id": "25c38557cf793876c5abdd5931f922db",
+          "item_count": 38,
+          "item_price_total": "38907.32"
+        },
+        {
+          "product_id": "5f504b3a1c75b73d6151be81eb05bdc9",
+          "item_count": 63,
+          "item_price_total": "37733.90"
+        },
+        {
+          "product_id": "53b36df67ebb7c41585e8d54d6772e08",
+          "item_count": 321,
+          "item_price_total": "37454.63"
+        },
+        {
+          "product_id": "aca2eb7d00ea1a7b8ebd4e68314663af",
+          "item_count": 520,
+          "item_price_total": "37104.30"
+        }
+      ]
+    },
+    "top_sellers_by_delivered_item_price": {
+      "definition": "Top sellers by sum of item price on delivered orders.",
+      "unit": "BRL, item price only",
+      "sql": "\n            SELECT oi.seller_id, count(*) AS item_count, sum(oi.price) AS item_price_total\n            FROM order_items oi JOIN orders o ON o.order_id = oi.order_id\n            WHERE o.order_status = 'delivered'\n            GROUP BY oi.seller_id ORDER BY item_price_total DESC, oi.seller_id LIMIT 10\n        ",
+      "rows": [
+        {
+          "seller_id": "4869f7a5dfa277a7dca6462dcf3b52b2",
+          "item_count": 1148,
+          "item_price_total": "226987.93"
+        },
+        {
+          "seller_id": "53243585a1d6dc2643021fd1853d8905",
+          "item_count": 400,
+          "item_price_total": "217940.44"
+        },
+        {
+          "seller_id": "4a3ca9315b744ce9f8e9374361493884",
+          "item_count": 1949,
+          "item_price_total": "196882.12"
+        },
+        {
+          "seller_id": "fa1c13f2614d7b5c4749cbc52fecda94",
+          "item_count": 579,
+          "item_price_total": "190917.14"
+        },
+        {
+          "seller_id": "7c67e1448b00f6e969d365cea6b010ab",
+          "item_count": 1355,
+          "item_price_total": "186570.05"
+        },
+        {
+          "seller_id": "7e93a43ef30c4f03f38b393420bc753a",
+          "item_count": 322,
+          "item_price_total": "165981.49"
+        },
+        {
+          "seller_id": "da8622b14eb17ae2831f4ac5b9dab84a",
+          "item_count": 1548,
+          "item_price_total": "159816.87"
+        },
+        {
+          "seller_id": "7a67c85e85bb2ce8582c35f2203ad736",
+          "item_count": 1155,
+          "item_price_total": "139658.69"
+        },
+        {
+          "seller_id": "1025f0e2d44d7041d6cf58b6550e0bfa",
+          "item_count": 1420,
+          "item_price_total": "138208.56"
+        },
+        {
+          "seller_id": "955fee9216a65b617aa5c0531780ce60",
+          "item_count": 1472,
+          "item_price_total": "131836.71"
+        }
+      ]
+    },
+    "delivered_item_price_by_calendar_month": {
+      "definition": "Delivered-order item price grouped by local purchase month number across all years; exploratory seasonality only.",
+      "unit": "BRL, item price only",
+      "timezone": "America/Sao_Paulo",
+      "sql": "\n            SELECT extract(month FROM o.order_purchase_timestamp AT TIME ZONE 'America/Sao_Paulo')::int AS calendar_month,\n                   count(*) AS item_count, sum(oi.price) AS item_price_total\n            FROM order_items oi JOIN orders o ON o.order_id = oi.order_id\n            WHERE o.order_status = 'delivered'\n            GROUP BY 1 ORDER BY 1\n        ",
+      "rows": [
+        {
+          "calendar_month": 1,
+          "item_count": 8950,
+          "item_price_total": "1036443.36"
+        },
+        {
+          "calendar_month": 2,
+          "item_count": 9376,
+          "item_price_total": "1060660.53"
+        },
+        {
+          "calendar_month": 3,
+          "item_count": 10914,
+          "item_price_total": "1312555.10"
+        },
+        {
+          "calendar_month": 4,
+          "item_count": 10396,
+          "item_price_total": "1314203.77"
+        },
+        {
+          "calendar_month": 5,
+          "item_count": 11814,
+          "item_price_total": "1466882.94"
+        },
+        {
+          "calendar_month": 6,
+          "item_count": 10499,
+          "item_price_total": "1278001.23"
+        },
+        {
+          "calendar_month": 7,
+          "item_count": 11379,
+          "item_price_total": "1349557.98"
+        },
+        {
+          "calendar_month": 8,
+          "item_count": 11939,
+          "item_price_total": "1393276.34"
+        },
+        {
+          "calendar_month": 9,
+          "item_count": 4740,
+          "item_price_total": "607534.64"
+        },
+        {
+          "calendar_month": 10,
+          "item_count": 5527,
+          "item_price_total": "688572.76"
+        },
+        {
+          "calendar_month": 11,
+          "item_count": 8475,
+          "item_price_total": "987765.37"
+        },
+        {
+          "calendar_month": 12,
+          "item_count": 6188,
+          "item_price_total": "726044.09"
+        }
+      ]
+    }
+  }
+}

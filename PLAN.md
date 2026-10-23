@@ -90,16 +90,19 @@
 - [x] Thiết kế model SQLAlchemy và migration Alembic trong `sources/oltp/` cho các bảng theo schema Olist; migration đầu tiên đã được tạo và áp dụng vào PostgreSQL local
   - PK, FK, index trên các FK hay join
   - Map `orders.order_status` của Olist về tập dùng trong project: `created, paid, shipped, delivered, cancelled, refunded` (lưu cả status gốc nếu cần đối chiếu)
-- [x] Viết `sources/oltp/load_olist.py`: nạp CSV bằng `COPY` (không insert từng dòng), kiểm tra FK integrity sau khi nạp — record mồ côi (order_item không có order, review không có order...) thì ghi log và loại/quarantine, không nạp bừa. Đã kiểm chứng trên DB tạm; DB chính chưa được nạp.
-- [ ] **Bổ sung cột mà Olist không có** — bước bắt buộc, thiếu là CDC không chạy được:
+- [x] Viết `sources/oltp/load_olist.py`: nạp CSV bằng `COPY` (không insert từng dòng), kiểm tra FK integrity sau khi nạp — record mồ côi (order_item không có order, review không có order...) thì ghi log và loại/quarantine, không nạp bừa. Đã kiểm chứng trên DB tạm và nạp DB nguồn chính.
+- [x] **Bổ sung cột mà Olist không có** — bước bắt buộc, thiếu là CDC không chạy được:
   - Thêm `created_at, updated_at` cho mọi bảng: khởi tạo `updated_at =` timestamp nghiệp vụ gần nhất của bản ghi đó (ví dụ orders lấy `order_purchase_timestamp`, products/customers lấy thời điểm snapshot)
   - Ghi rõ trong README: đây là mốc snapshot — mọi thay đổi có `updated_at` lớn hơn mốc này đều do simulator ở 1C tạo ra
 
-#### 1B. Kiểm chứng dữ liệu thật (cuối Ngày 2)
-- [ ] Chạy vài query nghiệp vụ bằng SQL thuần và giữ lại kết quả làm mốc đối soát về sau: doanh thu theo category/tháng, tỉ lệ huỷ, rating TB theo thời gian giao hàng, top products/sellers
-- [ ] Vì là dữ liệu thật, các pattern này phải có sẵn mà không cần bạn "nặn": seasonality theo tháng, chênh lệch category, tương quan giao chậm ↔ rating thấp
+#### 1B. Chốt mốc đối soát cho initial snapshot (cuối Ngày 2)
+- [x] Sau khi nạp Olist vào DB nguồn chính, chưa chạy simulator trên DB này. Gán `snapshot_id` cho lần nạp; lưu danh sách/phiên bản CSV, thời điểm chốt, số dòng từng bảng và số dòng quarantine. Giữ nguồn đứng yên trong lần chốt mốc demo để các query đọc cùng một tập dữ liệu.
+- [x] Lưu SQL thuần và kết quả độc lập với logic Silver/Gold cho một bộ chỉ số nhỏ: số dòng theo bảng, số đơn theo trạng thái, tổng `order_items.price` theo tháng và số bản ghi mồ côi. Mỗi kết quả gắn `snapshot_id`, định nghĩa phép tính, thời điểm chạy và múi giờ/đơn vị nếu có; tổng tiền ở cấp item, không join trực tiếp payments hoặc reviews vào phép cộng.
+- [x] Giữ các phân tích doanh thu theo category, tỉ lệ huỷ, rating theo thời gian giao hàng, top products/sellers và seasonality làm khám phá dữ liệu để thiết kế mart/simulator; không coi mọi kết quả khám phá là tiêu chí bắt buộc phải khớp Gold.
+- [ ] Khi Bronze → Silver → Gold đã xử lý xong initial snapshot, đối chiếu các chỉ số cùng định nghĩa và cùng `snapshot_id`; lưu chênh lệch và kiểm tra theo từng tầng nếu lệch. Việc này là tiêu chí kiểm chứng của các giai đoạn downstream, không chặn việc hoàn thành Giai đoạn 1.
 
 #### 1C. Gen phần mới — bám trên dữ liệu thật (Ngày 3–4)
+- [ ] Phát triển và chạy thử simulator trên DB kiểm thử tách biệt, được nạp từ cùng snapshot. Chỉ chạy simulator trên DB nguồn chính sau khi initial snapshot đã đi qua Bronze/Silver/Gold và đối soát 1B đạt; sau đó đối soát thay đổi theo watermark, không quét toàn bộ OLTP sau mỗi lần chạy.
 - [ ] Viết `sources/oltp/simulate_new_day.py` — **script quan trọng nhất của giai đoạn này.** Khác với tự gen từ đầu: mọi bản ghi mới phải tham chiếu customers/products/sellers **có thật** trong DB:
   - Thêm orders mới (số lượng tuỳ scale đang chạy, xem 1D) cho khách cũ (để RFM/retention có ý nghĩa) + một phần khách mới bằng Faker
   - Update giá `order_items`/products: đổi giá 3% products thật, đổi `city/state` của 2% customers thật → tạo sự kiện cho SCD Type 2 ở Giai đoạn 4
@@ -113,9 +116,9 @@
 - [ ] Cách này giữ được câu chuyện trung thực khi phỏng vấn: "dữ liệu gốc là dữ liệu thật, phần scale-up được sinh theo đúng phân phối thống kê của dữ liệu thật"
 
 ### Done khi
-- [ ] Đếm được số dòng từng bảng khớp số dòng Olist gốc (sau khi trừ record quarantine đã ghi log)
-- [ ] Query ở 1B cho kết quả hợp lý và đã lưu làm mốc đối soát
-- [ ] Chạy `simulate_new_day.py` 1 lần: số orders tăng, có products thật bị đổi giá (kiểm tra bằng `updated_at` mới nhất), có customers biến mất, và **không có order mới nào tham chiếu customer/product không tồn tại**
+- [x] Đếm được số dòng từng bảng khớp số dòng Olist gốc (sau khi trừ record quarantine đã ghi log)
+- [x] Đã lưu SQL, metadata và kết quả 1B theo `snapshot_id` để đối soát khi có Silver/Gold; DB nguồn chính chưa bị simulator thay đổi
+- [ ] Chạy `simulate_new_day.py` 1 lần **trên DB kiểm thử tách biệt**: số orders tăng, có products thật bị đổi giá (kiểm tra bằng `updated_at` mới nhất), hành vi xoá khách hàng được kiểm chứng theo thiết kế đã chốt, và **không có order mới nào tham chiếu customer/product không tồn tại**
 
 ### Rủi ro thường gặp
 - Quên bổ sung `updated_at` khi nạp Olist → Giai đoạn 2 không có mốc nào để CDC polling. Đây là việc đầu tiên phải làm sau khi nạp.
@@ -137,9 +140,9 @@
   - Thêm cột `ingested_at, source_table` vào file Bronze
 - [ ] Viết `ingestion/ingest_logs.py`: nén + upload clickstream `.json.gz` lên `bronze/clickstream/dt=.../hour=.../`
 - [ ] Viết `ingestion/ingest_api.py`: gọi API tỷ giá + campaign (hoặc mock API), lưu JSON thô lên `bronze/api/<source>/dt=.../`, retry 3 lần khi API lỗi
-- [ ] Chạy thử chu trình demo CDC hoàn chỉnh:
+- [ ] Chạy thử chu trình demo CDC hoàn chỉnh trên DB nguồn kiểm thử tách biệt, được nạp từ cùng snapshot; DB nguồn chính vẫn giữ initial snapshot đến khi đối soát Bronze/Silver/Gold đạt:
   1. Chạy ingestion lần 1 → ghi lại số file/số dòng Bronze
-  2. Chạy `simulate_new_day.py`
+  2. Chạy `simulate_new_day.py` trên DB nguồn kiểm thử đó
   3. Chạy ingestion lần 2 → Bronze chỉ có thêm phần thay đổi, không load lại toàn bộ
 
 ### Done khi
