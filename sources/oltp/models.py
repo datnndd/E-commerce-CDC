@@ -11,6 +11,14 @@ class Base(DeclarativeBase):
     pass
 
 
+class CdcWatermark(Base):
+    __tablename__ = "cdc_watermark"
+
+    table_name: Mapped[str] = mapped_column(String(63), primary_key=True)
+    last_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class Customer(Base):
     __tablename__ = "customers"
     __table_args__ = (

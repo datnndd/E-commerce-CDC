@@ -97,6 +97,17 @@ uv run python -m sources.clickstream.generate logs/simulator/<run-id>.json
 
 The simulator writes a JSON run report under `logs/simulator/`; the clickstream command writes the corresponding JSONL file. It creates new customers and orders, updates product prices and existing customer addresses, and marks some customers as deleted without removing their historical orders. Each report records the affected counts. Main-source execution remains disabled until initial Bronze/Silver/Gold reconciliation, when its safety gate can be reviewed.
 
+### Stage 2: CDC control table
+
+The main RDS source can add the empty `cdc_watermark` control table without applying the Stage 1C source changes. With `.env` pointing to RDS and Alembic at `b5e79439fda1`, run:
+
+```bash
+uv run alembic -c sources/oltp/alembic.ini upgrade d79b3fd3ea12
+uv run alembic -c sources/oltp/alembic.ini current
+```
+
+Expect revision `d79b3fd3ea12` and an empty table with `table_name`, `last_updated_at`, and `last_run_at`. Rows are written only by a successful ingestion run; no initial watermark is prefilled. The separate Stage 1C migration remains unapplied on the main source.
+
 ## Stage 0 cloud status
 
 AWS Console and CloudShell access in `ap-southeast-1` have been checked. The project S3 bucket has Block Public Access, ACLs disabled, and default SSE-S3 encryption. A small object was uploaded, inspected, and deleted using the AWS CLI in CloudShell. The bucket name and cloud credentials are intentionally kept out of this repository.
