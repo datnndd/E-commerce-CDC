@@ -11,7 +11,7 @@ from uuid import uuid4
 import psycopg
 from faker import Faker
 
-from sources.oltp.load_olist import ROOT, database_settings
+from sources.oltp.load_olist import ROOT, connection_settings, database_settings
 
 
 def main() -> None:
@@ -34,10 +34,7 @@ def main() -> None:
     run_id = uuid4().hex[:12]
     output = args.output or ROOT / "logs" / "simulator" / f"{run_id}.json"
 
-    with psycopg.connect(
-        host="127.0.0.1", port=int(settings["POSTGRES_PORT"]), dbname=dbname,
-        user=settings["POSTGRES_USER"], password=settings["POSTGRES_PASSWORD"],
-    ) as connection:
+    with psycopg.connect(**connection_settings(settings)) as connection:
         with connection.cursor() as cur:
             cur.execute("SELECT customer_id, customer_unique_id, customer_zip_code_prefix, customer_city, customer_state FROM customers WHERE NOT is_deleted ORDER BY customer_id")
             customers = cur.fetchall()

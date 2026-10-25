@@ -52,10 +52,31 @@ def database_settings() -> dict[str, str]:
     settings = {}
     for name in ("POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB", "POSTGRES_PORT"):
         value = os.environ.get(name) or local.get(name)
-        if not value or value == "replace-with-a-local-password":
+        if not value or value.startswith("replace-with-"):
             raise ValueError(f"Set {name} in the environment or .env")
         settings[name] = value
+    settings["POSTGRES_HOST"] = os.environ.get("POSTGRES_HOST") or local.get("POSTGRES_HOST") or "127.0.0.1"
+    settings["POSTGRES_SSLMODE"] = os.environ.get("POSTGRES_SSLMODE") or local.get("POSTGRES_SSLMODE") or "prefer"
+    certificate = os.environ.get("POSTGRES_SSLROOTCERT") or local.get("POSTGRES_SSLROOTCERT")
+    if certificate:
+        settings["POSTGRES_SSLROOTCERT"] = certificate
+    if settings["POSTGRES_SSLMODE"] == "verify-full" and not certificate:
+        raise ValueError("Set POSTGRES_SSLROOTCERT for verify-full TLS")
     return settings
+
+
+def connection_settings(settings: dict[str, str]) -> dict:
+    options = {
+        "host": settings["POSTGRES_HOST"],
+        "port": int(settings["POSTGRES_PORT"]),
+        "dbname": settings["POSTGRES_DB"],
+        "user": settings["POSTGRES_USER"],
+        "password": settings["POSTGRES_PASSWORD"],
+        "sslmode": settings["POSTGRES_SSLMODE"],
+    }
+    if "POSTGRES_SSLROOTCERT" in settings:
+        options["sslrootcert"] = settings["POSTGRES_SSLROOTCERT"]
+    return options
 
 
 def source_columns(table) -> list:
@@ -224,13 +245,7 @@ def main() -> None:
     run_dir = args.report_dir / f"{snapshot_at:%Y%m%dT%H%M%SZ}_{uuid4().hex[:8]}"
     accepted_ids: dict[str, set[str]] = {model.__tablename__: set() for model, _ in FILES}
     report = {}
-    with psycopg.connect(
-        host="127.0.0.1",
-        port=int(settings["POSTGRES_PORT"]),
-        dbname=settings["POSTGRES_DB"],
-        user=settings["POSTGRES_USER"],
-        password=settings["POSTGRES_PASSWORD"],
-    ) as connection:
+    with psycopg.connect(**connection_settings(settings)) as connection:
         with connection.cursor() as cursor:
             for model, _ in FILES:
                 table_name = model.__tablename__

@@ -1,34 +1,25 @@
-"""Run OLTP migrations using the local PostgreSQL settings in .env."""
-
-import os
-from pathlib import Path
+"""Run OLTP migrations using the PostgreSQL settings in .env or the environment."""
 
 from alembic import context
-from dotenv import dotenv_values
 from sqlalchemy import create_engine, pool
 from sqlalchemy.engine import URL
 
 from sources.oltp.models import Base
+from sources.oltp.load_olist import database_settings
 
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-LOCAL_ENV = dotenv_values(REPO_ROOT / ".env")
-
-
-def setting(name: str) -> str:
-    value = os.environ.get(name) or LOCAL_ENV.get(name)
-    if not value or value == "replace-with-a-local-password":
-        raise RuntimeError(f"Set {name} in the environment or in .env")
-    return value
-
-
+settings = database_settings()
+tls = {"sslmode": settings["POSTGRES_SSLMODE"]}
+if "POSTGRES_SSLROOTCERT" in settings:
+    tls["sslrootcert"] = settings["POSTGRES_SSLROOTCERT"]
 database_url = URL.create(
     "postgresql+psycopg",
-    username=setting("POSTGRES_USER"),
-    password=setting("POSTGRES_PASSWORD"),
-    host="127.0.0.1",
-    port=int(setting("POSTGRES_PORT")),
-    database=setting("POSTGRES_DB"),
+    username=settings["POSTGRES_USER"],
+    password=settings["POSTGRES_PASSWORD"],
+    host=settings["POSTGRES_HOST"],
+    port=int(settings["POSTGRES_PORT"]),
+    database=settings["POSTGRES_DB"],
+    query=tls,
 )
 target_metadata = Base.metadata
 

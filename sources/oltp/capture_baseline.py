@@ -11,7 +11,7 @@ import psycopg
 from psycopg import sql
 from psycopg.rows import dict_row
 
-from sources.oltp.load_olist import FILES, ROOT, database_settings
+from sources.oltp.load_olist import FILES, ROOT, connection_settings, database_settings
 
 
 METRICS = {
@@ -186,14 +186,7 @@ def main() -> None:
         for model, filename in FILES
     }
     settings = database_settings()
-    with psycopg.connect(
-        host="127.0.0.1",
-        port=int(settings["POSTGRES_PORT"]),
-        dbname=settings["POSTGRES_DB"],
-        user=settings["POSTGRES_USER"],
-        password=settings["POSTGRES_PASSWORD"],
-        row_factory=dict_row,
-    ) as connection:
+    with psycopg.connect(**connection_settings(settings), row_factory=dict_row) as connection:
         with connection.transaction():
             connection.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
             captured_at = connection.execute("SELECT transaction_timestamp() AS captured_at").fetchone()["captured_at"]
