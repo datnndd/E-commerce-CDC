@@ -108,6 +108,17 @@ uv run alembic -c sources/oltp/alembic.ini current
 
 Expect revision `d79b3fd3ea12` and an empty table with `table_name`, `last_updated_at`, and `last_run_at`. Rows are written only by a successful ingestion run; no initial watermark is prefilled. The separate Stage 1C migration remains unapplied on the main source.
 
+### Stage 2: PostgreSQL to S3 Bronze
+
+On EC2, set `S3_BUCKET` in `.env` to the project bucket name. The instance role needs `s3:GetObject` and `s3:PutObject` on `bronze/postgres/*`, plus `s3:ListBucket` on the bucket so a missing object returns 404 to the [S3 HeadObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html) check. The bucket is in `ap-southeast-1`. With `.env` pointing to the RDS source at revision `d79b3fd3ea12`, run from the repository root:
+
+```bash
+uv sync --frozen
+uv run --frozen python -m ingestion.cdc_extract
+```
+
+Use `--table orders` to extract one table while checking the setup. The first run writes Parquet under `bronze/postgres/<table>/dt=YYYY-MM-DD/`, where `dt` is the latest source `updated_at` date in UTC. Each row includes `ingested_at` and `source_table`. The script streams rows in batches, uploads before advancing `cdc_watermark`, and reuses an existing object with the same source content on retry. It polls the newest timestamp group again, so rows sharing the watermark timestamp are not missed; Silver must deduplicate any repeated source rows. A run with no source changes uploads zero new files. Snapshot-loaded tables with many rows sharing one `updated_at` are rescanned at that boundary on every run, even when no file is uploaded. Polling still cannot detect physical deletes or updates whose `updated_at` is backdated below the saved watermark.
+
 ## Stage 0 cloud status
 
 AWS Console and CloudShell access in `ap-southeast-1` have been checked. The project S3 bucket has Block Public Access, ACLs disabled, and default SSE-S3 encryption. A small object was uploaded, inspected, and deleted using the AWS CLI in CloudShell. The bucket name and cloud credentials are intentionally kept out of this repository.

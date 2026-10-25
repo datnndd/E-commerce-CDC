@@ -132,9 +132,9 @@
 **Mục tiêu:** Dữ liệu từ 3 nguồn (DB, Logs, API) đều vào được S3 Bronze đúng chuẩn, chạy lại không bị trùng.
 
 ### Việc cần làm
-- [ ] Tạo bảng control trong Postgres nguồn: `cdc_watermark(table_name, last_updated_at, last_run_at)`.
-- [ ] Viết `ingestion/cdc_extract.py` (Phase 1 — timestamp CDC):
-  - Với từng bảng: `SELECT * WHERE updated_at > :last_watermark ORDER BY updated_at`
+- [x] Tạo bảng control trong Postgres nguồn: `cdc_watermark(table_name, last_updated_at, last_run_at)` (đã kiểm thử migration; người dùng báo đã áp dụng trên RDS).
+- [x] Viết `ingestion/cdc_extract.py` (Phase 1 — timestamp CDC; đã kiểm thử với PostgreSQL tạm và S3 giả lập, chưa chạy EC2/RDS → S3 thật):
+  - Với từng bảng: đọc `updated_at >= :last_watermark`, sắp theo `updated_at` và PK; tách nhóm timestamp lớn nhất thành file có khóa theo nội dung để lần chạy không đổi tạo 0 file mới, còn dòng mới cùng timestamp vẫn được bắt. Silver sẽ dedup các dòng biên được đọc lại.
   - Ghi ra Parquet, upload lên `s3://<bucket>/bronze/postgres/<table>/dt=YYYY-MM-DD/`
   - Chỉ cập nhật watermark **sau khi upload thành công** (upload fail mà watermark đã nhảy = mất dữ liệu vĩnh viễn)
   - Thêm cột `ingested_at, source_table` vào file Bronze
