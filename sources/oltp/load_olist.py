@@ -261,15 +261,23 @@ def main() -> None:
                     cursor, model, dataset / file, accepted_ids, source_zone, snapshot_at, run_dir
                 )
             cursor.execute("""
-                UPDATE products AS p SET current_price = latest.price
-                FROM (
-                    SELECT DISTINCT ON (oi.product_id) oi.product_id, oi.price
-                    FROM order_items AS oi
-                    JOIN orders AS o ON o.order_id = oi.order_id
-                    ORDER BY oi.product_id, o.order_purchase_timestamp DESC, oi.order_id DESC, oi.order_item_id DESC
-                ) AS latest
-                WHERE p.product_id = latest.product_id
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = current_schema()
+                      AND table_name = 'products' AND column_name = 'current_price'
+                )
             """)
+            if cursor.fetchone()[0]:
+                cursor.execute("""
+                    UPDATE products AS p SET current_price = latest.price
+                    FROM (
+                        SELECT DISTINCT ON (oi.product_id) oi.product_id, oi.price
+                        FROM order_items AS oi
+                        JOIN orders AS o ON o.order_id = oi.order_id
+                        ORDER BY oi.product_id, o.order_purchase_timestamp DESC, oi.order_id DESC, oi.order_item_id DESC
+                    ) AS latest
+                    WHERE p.product_id = latest.product_id
+                """)
 
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "report.json").write_text(
