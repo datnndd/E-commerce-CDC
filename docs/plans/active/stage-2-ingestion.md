@@ -39,6 +39,7 @@ Out of scope: running the simulator on the main RDS source before downstream sna
 
 - [x] Add the `cdc_watermark` migration. The user reports upgrading EC2/RDS to `d79b3fd3ea12`; RDS state has not been observed locally.
 - [x] Implement PostgreSQL extraction and validate against a disposable PostgreSQL database with a fake S3 client.
+- [x] Create a separate test bucket in `ap-southeast-1` and verify local SDK access with temporary Console-backed credentials; bucket name and login cache remain outside Git.
 - [ ] Implement clickstream and API ingestion.
 - [ ] Verify the full Stage 2 acceptance criteria.
 
@@ -50,7 +51,9 @@ Out of scope: running the simulator on the main RDS source before downstream sna
 
 - Focused proof: `tests/test_cdc_extract.py` passed on disposable PostgreSQL 18.6 for initial extraction, unchanged rerun, same-timestamp addition, upload failure, and retry. The failed upload did not advance the watermark.
 - Full snapshot proof: loaded all nine Olist CSVs with zero quarantine into a separate disposable database at `d79b3fd3ea12`. All nine tables extracted into 11 Parquet objects totaling 66,269,013 bytes through a fake S3 client; the immediate rerun created zero new objects. The fake client checked object keys and file sizes; no AWS upload occurred.
+- 2026-10-26 local S3 proof: a separate bucket showed Block Public Access on, ACLs disabled, and SSE-S3. AWS CLI `head-bucket` confirmed `ap-southeast-1`; boto3 using a temporary CLI-backed profile passed PUT, GET, LIST, and DELETE for an isolated smoke object. The ignored `.env` selects this bucket and profile. No CDC Parquet has been uploaded to AWS yet.
 - Integration proof: EC2/RDS to the project S3 bucket remains pending.
+- Local CDC extraction against private RDS is pending a network path; the local `.env` currently names its private endpoint and local Docker PostgreSQL is stopped.
 - Repository checks: compile, `uv lock --check`, and `git diff --check`.
 
 ## Result

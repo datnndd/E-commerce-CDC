@@ -159,7 +159,8 @@ def main():
     if not bucket or bucket == "your-project-bucket":
         parser.error("Set S3_BUCKET in the environment or .env")
     region = os.environ.get("AWS_REGION") or local.get("AWS_REGION") or "ap-southeast-1"
-    s3 = boto3.client("s3", region_name=region)
+    profile = os.environ.get("AWS_PROFILE") or local.get("AWS_PROFILE")
+    s3 = boto3.Session(profile_name=profile).client("s3", region_name=region)
     settings = database_settings()
     for table_name in args.table or TABLES:
         extract_table(settings, s3, bucket, table_name)
