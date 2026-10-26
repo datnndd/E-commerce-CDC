@@ -132,11 +132,11 @@
 **Mục tiêu:** Dữ liệu từ 3 nguồn (DB, Logs, API) đều vào được S3 Bronze đúng chuẩn, chạy lại không bị trùng.
 
 ### Việc cần làm
-- [x] Tạo bảng control trong Postgres nguồn: `cdc_watermark(table_name, last_updated_at, last_run_at)` (đã kiểm thử migration; người dùng báo đã áp dụng trên RDS).
+- [x] Tạo bảng control trong Postgres nguồn: `cdc_watermark(table_name, last_updated_at, last_run_at)` (người dùng báo đã áp dụng `d79b3fd3ea12` trên RDS); migration `6c4d9b7e2a11` bổ sung `last_boundary_hash`, chưa xác nhận đã áp dụng trên RDS.
 - [x] Viết `ingestion/cdc_extract.py` (Phase 1 — timestamp CDC; đã kiểm thử với PostgreSQL tạm và S3 giả lập, chưa chạy EC2/RDS → S3 thật):
-  - Với từng bảng: đọc `updated_at >= :last_watermark`, sắp theo `updated_at` và PK; tách nhóm timestamp lớn nhất thành file có khóa theo nội dung để lần chạy không đổi tạo 0 file mới, còn dòng mới cùng timestamp vẫn được bắt. Silver sẽ dedup các dòng biên được đọc lại.
-  - Ghi ra Parquet, upload lên `s3://<bucket>/bronze/postgres/<table>/dt=YYYY-MM-DD/`
-  - Chỉ cập nhật watermark **sau khi upload thành công** (upload fail mà watermark đã nhảy = mất dữ liệu vĩnh viễn)
+  - Với từng bảng: đọc `updated_at >= :last_watermark`, sắp theo `updated_at` và PK; lưu dấu vân tay nhóm timestamp lớn nhất trong watermark để lượt không đổi tạo 0 file, còn dòng mới cùng timestamp vẫn được bắt. Silver sẽ dedup các dòng biên được đọc lại.
+  - Mỗi lượt có thay đổi tạo `s3://<bucket>/bronze/postgres_oltp/<table>/dt=YYYY-MM-DD/batch_id=<id>/part-0000.parquet`, rồi ghi `_manifest.json` với `status=committed` sau khi Parquet upload thành công. Silver chỉ đọc file được manifest tham chiếu.
+  - Chỉ cập nhật watermark **sau khi manifest upload thành công**. Retry dùng batch ID mới; nếu manifest thành công nhưng DB commit lỗi, Silver dedup batch lặp.
   - Thêm cột `ingested_at, source_table` vào file Bronze
 - [ ] Viết `ingestion/ingest_logs.py`: nén + upload clickstream `.json.gz` lên `bronze/clickstream/dt=.../hour=.../`
 - [ ] Viết `ingestion/ingest_api.py`: gọi API tỷ giá + campaign (hoặc mock API), lưu JSON thô lên `bronze/api/<source>/dt=.../`, retry 3 lần khi API lỗi

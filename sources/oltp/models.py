@@ -17,6 +17,7 @@ class CdcWatermark(Base):
     table_name: Mapped[str] = mapped_column(String(63), primary_key=True)
     last_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_boundary_hash: Mapped[str | None] = mapped_column(String(64))
 
 
 class Customer(Base):

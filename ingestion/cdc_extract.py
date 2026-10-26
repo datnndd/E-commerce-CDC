@@ -1,17 +1,18 @@
-"""Poll OLTP tables into idempotent Parquet objects in S3 Bronze."""
+"""Poll OLTP tables into manifest-committed Parquet batches in S3 Bronze."""
 
 import argparse
 import hashlib
+import json
 import os
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from uuid import uuid4
 
 import boto3
 import pyarrow as pa
 import pyarrow.parquet as pq
 import psycopg
-from botocore.exceptions import ClientError
 from dotenv import dotenv_values
 from psycopg import IsolationLevel, sql
 from sqlalchemy import BigInteger, Boolean, DateTime, Float, Integer, Numeric, String
@@ -42,30 +43,27 @@ def arrow_type(column):
     raise TypeError(f"Unsupported source column type: {column.name} {column_type}")
 
 
-def write_parquet(connection, model, table_name, last_updated_at, max_updated_at, kind, ingested_at):
+def write_parquet(connection, model, table_name, last_updated_at, max_updated_at, ingested_at):
     table = model.__table__
-    if kind == "older":
-        predicate = sql.SQL("updated_at < %s") if last_updated_at is None else sql.SQL(
-            "updated_at >= %s AND updated_at < %s"
-        )
-        parameters = (max_updated_at,) if last_updated_at is None else (last_updated_at, max_updated_at)
+    if last_updated_at is None:
+        predicate, parameters = sql.SQL("updated_at <= %s"), (max_updated_at,)
     else:
-        predicate = sql.SQL("updated_at = %s")
-        parameters = (max_updated_at,)
+        predicate, parameters = sql.SQL("updated_at >= %s AND updated_at <= %s"), (last_updated_at, max_updated_at)
 
     primary_key = sql.SQL(", ").join(sql.Identifier(column.name) for column in table.primary_key.columns)
     query = sql.SQL("SELECT * FROM {} WHERE {} ORDER BY updated_at, {}").format(
         sql.Identifier(table_name), predicate, primary_key
     )
     path = None
-    with connection.cursor(name=f"cdc_{table_name}_{kind}") as cursor:
+    with connection.cursor(name=f"cdc_{table_name}") as cursor:
         cursor.execute(query, parameters)
         names = [column.name for column in cursor.description]
         schema = pa.schema(
             [pa.field(name, arrow_type(table.columns[name])) for name in names]
             + [pa.field("ingested_at", pa.timestamp("us", tz="UTC")), pa.field("source_table", pa.string())]
         )
-        digest = hashlib.sha256(repr(names).encode("utf-8"))
+        boundary_hash = hashlib.sha256(repr(names).encode("utf-8"))
+        updated_at_index = names.index("updated_at")
         count = 0
         writer = None
         try:
@@ -75,8 +73,9 @@ def write_parquet(connection, model, table_name, last_updated_at, max_updated_at
                         path = Path(temp.name)
                     writer = pq.ParquetWriter(path, schema, compression="snappy")
                 for row in rows:
-                    digest.update(repr(row).encode("utf-8"))
-                    digest.update(b"\n")
+                    if row[updated_at_index] == max_updated_at:
+                        boundary_hash.update(repr(row).encode("utf-8"))
+                        boundary_hash.update(b"\n")
                 batch = [dict(zip(names, row)) | {"ingested_at": ingested_at, "source_table": table_name} for row in rows]
                 writer.write_table(pa.Table.from_pylist(batch, schema=schema))
                 count += len(rows)
@@ -90,21 +89,16 @@ def write_parquet(connection, model, table_name, last_updated_at, max_updated_at
         finally:
             if writer is not None:
                 writer.close()
-    return path, count, digest.hexdigest()
+    return path, count, boundary_hash.hexdigest()
 
 
-def object_exists(s3, bucket, key):
-    try:
-        s3.head_object(Bucket=bucket, Key=key)
-        return True
-    except ClientError as error:
-        if error.response.get("Error", {}).get("Code") in {"404", "NoSuchKey", "NotFound"}:
-            return False
-        raise
+def utc_text(value):
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def extract_table(settings, s3, bucket, table_name):
-    ingested_at = datetime.now(timezone.utc)
+def extract_table(settings, s3, bucket, table_name, run_id=None):
+    started_at = datetime.now(timezone.utc)
+    run_id = run_id or f"pipeline_{started_at.strftime('%Y%m%dT%H%M%S%fZ')}"
     with psycopg.connect(**connection_settings(settings), options="-c TimeZone=UTC") as connection:
         connection.isolation_level = IsolationLevel.REPEATABLE_READ
         with connection.cursor() as cursor:
@@ -113,41 +107,74 @@ def extract_table(settings, s3, bucket, table_name):
                 (table_name,),
             )
             cursor.execute(
-                "SELECT last_updated_at FROM cdc_watermark WHERE table_name = %s FOR UPDATE",
+                "SELECT last_updated_at, last_boundary_hash FROM cdc_watermark WHERE table_name = %s FOR UPDATE",
                 (table_name,),
             )
-            last_updated_at = cursor.fetchone()[0]
+            last_updated_at, last_boundary_hash = cursor.fetchone()
             cursor.execute(sql.SQL("SELECT max(updated_at) FROM {}").format(sql.Identifier(table_name)))
             max_updated_at = cursor.fetchone()[0]
             if last_updated_at and max_updated_at and max_updated_at < last_updated_at:
                 raise ValueError(f"{table_name}: source updated_at moved behind its watermark")
 
-        files = 0
-        rows = 0
+        files = published_rows = scanned_rows = 0
         if max_updated_at is not None:
-            for kind in ("older", "boundary"):
-                path, count, digest = write_parquet(
-                    connection, TABLES[table_name], table_name, last_updated_at, max_updated_at, kind, ingested_at
-                )
-                if path is None:
-                    continue
-                try:
-                    partition = max_updated_at.astimezone(timezone.utc).strftime("%Y-%m-%d")
-                    key = f"bronze/postgres/{table_name}/dt={partition}/{kind}-{digest}.parquet"
-                    if not object_exists(s3, bucket, key):
-                        s3.upload_file(str(path), bucket, key)
-                        files += 1
-                    rows += count
-                finally:
-                    path.unlink(missing_ok=True)
+            path, count, boundary_hash = write_parquet(
+                connection, TABLES[table_name], table_name, last_updated_at, max_updated_at, started_at
+            )
+            scanned_rows = count
+            if path is None:
+                raise ValueError(f"{table_name}: maximum updated_at has no source rows")
+            try:
+                if max_updated_at != last_updated_at or boundary_hash != last_boundary_hash:
+                    batch_id = f"{table_name}_{started_at.strftime('%Y%m%dT%H%M%S%fZ')}_{uuid4().hex[:8]}"
+                    day = max_updated_at.astimezone(timezone.utc).strftime("%Y-%m-%d")
+                    prefix = f"bronze/postgres_oltp/{table_name}/dt={day}/batch_id={batch_id}/"
+                    file_name = "part-0000.parquet"
+                    with path.open("rb") as data_file:
+                        sha256 = hashlib.file_digest(data_file, "sha256").hexdigest()
+                    s3.upload_file(str(path), bucket, prefix + file_name)
+                    # PostgreSQL timestamps have microsecond precision; this includes the old boundary group.
+                    lower = last_updated_at - timedelta(microseconds=1) if last_updated_at else None
+                    manifest = {
+                        "run_id": run_id,
+                        "batch_id": batch_id,
+                        "source_system": "postgres_oltp",
+                        "dataset": table_name,
+                        "load_type": "snapshot" if last_updated_at is None else "delta",
+                        "window": {
+                            "lower_boundary_exclusive": utc_text(lower) if lower else None,
+                            "upper_boundary_inclusive": utc_text(max_updated_at),
+                        },
+                        "status": "committed",
+                        "row_count": count,
+                        "files": [{
+                            "name": file_name,
+                            "row_count": count,
+                            "size_bytes": path.stat().st_size,
+                            "sha256": sha256,
+                        }],
+                        "started_at": utc_text(started_at),
+                        "finished_at": utc_text(datetime.now(timezone.utc)),
+                    }
+                    s3.put_object(
+                        Bucket=bucket, Key=prefix + "_manifest.json",
+                        Body=json.dumps(manifest).encode("utf-8"), ContentType="application/json",
+                    )
+                    files, published_rows = 1, count
+            finally:
+                path.unlink(missing_ok=True)
 
         with connection.cursor() as cursor:
             cursor.execute(
-                "UPDATE cdc_watermark SET last_updated_at = COALESCE(%s, last_updated_at), last_run_at = %s "
+                "UPDATE cdc_watermark SET last_updated_at = COALESCE(%s, last_updated_at), "
+                "last_boundary_hash = COALESCE(%s, last_boundary_hash), last_run_at = %s "
                 "WHERE table_name = %s",
-                (max_updated_at, ingested_at, table_name),
+                (max_updated_at, boundary_hash if max_updated_at is not None else None, started_at, table_name),
             )
-    print(f"{table_name}: scanned {rows} rows, uploaded {files} file(s), watermark {max_updated_at}")
+    print(
+        f"{table_name}: scanned {scanned_rows} rows, published {published_rows} rows "
+        f"in {files} file(s), watermark {max_updated_at}"
+    )
 
 
 def main():
@@ -162,8 +189,9 @@ def main():
     profile = os.environ.get("AWS_PROFILE") or local.get("AWS_PROFILE")
     s3 = boto3.Session(profile_name=profile).client("s3", region_name=region)
     settings = database_settings()
+    run_id = f"pipeline_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')}"
     for table_name in args.table or TABLES:
-        extract_table(settings, s3, bucket, table_name)
+        extract_table(settings, s3, bucket, table_name, run_id)
 
 
 if __name__ == "__main__":

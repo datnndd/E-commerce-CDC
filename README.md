@@ -99,25 +99,27 @@ The simulator writes a JSON run report under `logs/simulator/`; the clickstream 
 
 ### Stage 2: CDC control table
 
-The main RDS source can add the empty `cdc_watermark` control table without applying the Stage 1C source changes. With `.env` pointing to RDS and Alembic at `b5e79439fda1`, run:
+The main RDS source can add `cdc_watermark` and its boundary fingerprint without applying the Stage 1C source changes. With `.env` pointing to RDS at `d79b3fd3ea12`, run:
 
 ```bash
-uv run alembic -c sources/oltp/alembic.ini upgrade d79b3fd3ea12
+uv run alembic -c sources/oltp/alembic.ini upgrade 6c4d9b7e2a11
 uv run alembic -c sources/oltp/alembic.ini current
 ```
 
-Expect revision `d79b3fd3ea12` and an empty table with `table_name`, `last_updated_at`, and `last_run_at`. Rows are written only by a successful ingestion run; no initial watermark is prefilled. The separate Stage 1C migration remains unapplied on the main source.
+Expect revision `6c4d9b7e2a11` and an empty table with `table_name`, `last_updated_at`, `last_run_at`, and `last_boundary_hash`. The fingerprint lets an unchanged boundary timestamp produce zero new files. The separate Stage 1C migration remains unapplied on the main source; use the explicit revision above, not `head`. An isolated database that already includes 1C can upgrade to merge revision `94f012a6c7b3`.
 
 ### Stage 2: PostgreSQL to S3 Bronze
 
-On EC2, set `S3_BUCKET` in `.env` to the project bucket name. The instance role needs `s3:GetObject` and `s3:PutObject` on `bronze/postgres/*`, plus `s3:ListBucket` on the bucket so a missing object returns 404 to the [S3 HeadObject](https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html) check. The bucket is in `ap-southeast-1`. With `.env` pointing to the RDS source at revision `d79b3fd3ea12`, run from the repository root:
+On EC2, set `S3_BUCKET` in `.env` to the project bucket name. The instance role needs `s3:PutObject` on `bronze/postgres_oltp/*`. The bucket is in `ap-southeast-1`. With `.env` pointing to the RDS source at revision `6c4d9b7e2a11`, run from the repository root:
 
 ```bash
 uv sync --frozen
 uv run --frozen python -m ingestion.cdc_extract
 ```
 
-Use `--table orders` to extract one table while checking the setup. The first run writes Parquet under `bronze/postgres/<table>/dt=YYYY-MM-DD/`, where `dt` is the latest source `updated_at` date in UTC. Each row includes `ingested_at` and `source_table`. The script streams rows in batches, uploads before advancing `cdc_watermark`, and reuses an existing object with the same source content on retry. It polls the newest timestamp group again, so rows sharing the watermark timestamp are not missed; Silver must deduplicate any repeated source rows. A run with no source changes uploads zero new files. Snapshot-loaded tables with many rows sharing one `updated_at` are rescanned at that boundary on every run, even when no file is uploaded. Polling still cannot detect physical deletes or updates whose `updated_at` is backdated below the saved watermark.
+Use `--table orders` to check one table first. Each changed run creates `bronze/postgres_oltp/<table>/dt=YYYY-MM-DD/batch_id=<id>/part-0000.parquet` and then `_manifest.json`; `dt` is the maximum source `updated_at` date in UTC. Silver must read only batches whose manifest has `status: committed`, and only the files listed there. The manifest records the run and batch IDs, source, load type, timestamp window, physical row count, per-file size and SHA-256, and start/finish times. The first batch has `load_type: snapshot` and a null lower boundary; later batches are `delta`. The lower boundary is one PostgreSQL microsecond before the saved watermark because the query re-reads that timestamp group. Each Parquet row includes `ingested_at` and `source_table`.
+
+The source watermark advances only after the manifest upload succeeds. A failed attempt can leave an unreferenced Parquet object; the next run creates a new batch ID and re-reads from the old watermark. If the manifest succeeds but the database commit fails, Bronze can contain two committed batches with overlapping rows. Silver must deduplicate by source key and row version/hash. The boundary fingerprint prevents an unchanged rerun from creating new files, while a new row sharing the maximum `updated_at` creates a new batch. `row_count` includes re-read boundary rows. Polling cannot detect physical deletes or updates backdated below the saved watermark. Orphan cleanup needs a separate retention policy and job; this extractor does not delete S3 objects.
 
 For local development, set `AWS_PROFILE` in the ignored `.env` to a temporary-credential profile that boto3 can use. AWS CLI v2 can obtain temporary credentials from an existing Console session with [`aws login`](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sign-in.html); botocore versions without the CRT login provider can use the documented `credential_process` profile backed by `aws configure export-credentials`. Leave `AWS_PROFILE` unset on EC2 so boto3 uses the instance role. Keep the test bucket name and AWS login cache outside Git. A private RDS endpoint still requires network access from the local machine; the S3 profile alone does not provide it.
 
