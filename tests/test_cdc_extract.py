@@ -97,6 +97,7 @@ class CdcExtractTest(unittest.TestCase):
         self.assertEqual(first["load_type"], "snapshot")
         self.assertIsNone(first["window"]["lower_boundary_exclusive"])
         self.assertEqual(first["window"]["upper_boundary_inclusive"], "2020-01-02T00:00:00Z")
+        self.assertRegex(first["batch_id"], r"^products_snapshot_20200102T000000000000Z_[0-9a-f]{8}$")
         self.assert_batch(first, 2)
         self.assertEqual([event[0] for event in self.s3.events], ["data", "manifest"])
 
@@ -114,11 +115,29 @@ class CdcExtractTest(unittest.TestCase):
         self.assertNotEqual(first["batch_id"], second["batch_id"])
         self.assertEqual(second["load_type"], "delta")
         self.assertEqual(second["window"]["lower_boundary_exclusive"], "2020-01-01T23:59:59.999999Z")
+        self.assertRegex(
+            second["batch_id"],
+            r"^products_20200101T235959999999Z_20200102T000000000000Z_[0-9a-f]{8}$",
+        )
         table = self.assert_batch(second, 2)
         self.assertIn("ingested_at", table.column_names)
         self.assertIn("source_table", table.column_names)
         extract_table(self.settings, self.s3, "test-bucket", "products")
         self.assertEqual(len(self.s3.objects), 4)
+
+        with psycopg.connect(
+            host="127.0.0.1", port=self.settings["POSTGRES_PORT"], dbname="cdc_test",
+            user="cdc_test", password="cdc_test_password",
+        ) as connection:
+            connection.execute("INSERT INTO products VALUES (%s, %s)", ("p4", datetime(2020, 1, 3, tzinfo=timezone.utc)))
+        extract_table(self.settings, self.s3, "test-bucket", "products")
+        third = self.manifests()[2]
+        self.assertEqual(third["window"]["lower_boundary_exclusive"], "2020-01-02T00:00:00Z")
+        self.assertRegex(
+            third["batch_id"],
+            r"^products_20200102T000000000000Z_20200103T000000000000Z_[0-9a-f]{8}$",
+        )
+        self.assert_batch(third, 1)
 
     def test_failed_upload_and_manifest_leave_watermark_unchanged(self):
         extract_table(self.settings, self.s3, "test-bucket", "products")
@@ -146,7 +165,7 @@ class CdcExtractTest(unittest.TestCase):
         self.assertEqual(self.watermark(), datetime(2020, 1, 3, tzinfo=timezone.utc))
         self.assertEqual(len(self.manifests()), 2)
         self.assertEqual(len(self.s3.objects), 5)
-        self.assert_batch(self.manifests()[1], 2)
+        self.assert_batch(self.manifests()[1], 1)
         count = len(self.s3.objects)
         extract_table(self.settings, self.s3, "test-bucket", "products")
         self.assertEqual(len(self.s3.objects), count)
@@ -181,7 +200,7 @@ class CdcExtractTest(unittest.TestCase):
         self.assertEqual(self.watermark(), datetime(2020, 1, 3, tzinfo=timezone.utc))
         self.assertEqual(len(self.manifests()), 3)
         self.assertNotEqual(self.manifests()[1]["batch_id"], self.manifests()[2]["batch_id"])
-        self.assert_batch(self.manifests()[2], 2)
+        self.assert_batch(self.manifests()[2], 1)
 
 
 if __name__ == "__main__":

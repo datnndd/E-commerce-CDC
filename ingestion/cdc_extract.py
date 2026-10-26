@@ -43,12 +43,31 @@ def arrow_type(column):
     raise TypeError(f"Unsupported source column type: {column.name} {column_type}")
 
 
-def write_parquet(connection, model, table_name, last_updated_at, max_updated_at, ingested_at):
+def boundary_fingerprint(connection, model, table_name, updated_at):
+    primary_key = sql.SQL(", ").join(sql.Identifier(column.name) for column in model.__table__.primary_key.columns)
+    query = sql.SQL("SELECT * FROM {} WHERE updated_at = %s ORDER BY {}").format(
+        sql.Identifier(table_name), primary_key
+    )
+    with connection.cursor(name=f"cdc_{table_name}_boundary") as cursor:
+        cursor.execute(query, (updated_at,))
+        digest = hashlib.sha256(repr([column.name for column in cursor.description]).encode("utf-8"))
+        count = 0
+        while rows := cursor.fetchmany(BATCH_ROWS):
+            for row in rows:
+                digest.update(repr(row).encode("utf-8"))
+                digest.update(b"\n")
+            count += len(rows)
+    return digest.hexdigest(), count
+
+
+def write_parquet(connection, model, table_name, last_updated_at, max_updated_at, ingested_at, include_boundary):
     table = model.__table__
     if last_updated_at is None:
         predicate, parameters = sql.SQL("updated_at <= %s"), (max_updated_at,)
     else:
-        predicate, parameters = sql.SQL("updated_at >= %s AND updated_at <= %s"), (last_updated_at, max_updated_at)
+        lower_operator = sql.SQL(">=") if include_boundary else sql.SQL(">")
+        predicate = sql.SQL("updated_at {} %s AND updated_at <= %s").format(lower_operator)
+        parameters = (last_updated_at, max_updated_at)
 
     primary_key = sql.SQL(", ").join(sql.Identifier(column.name) for column in table.primary_key.columns)
     query = sql.SQL("SELECT * FROM {} WHERE {} ORDER BY updated_at, {}").format(
@@ -96,6 +115,10 @@ def utc_text(value):
     return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def batch_stamp(value):
+    return value.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+
+
 def extract_table(settings, s3, bucket, table_name, run_id=None):
     started_at = datetime.now(timezone.utc)
     run_id = run_id or f"pipeline_{started_at.strftime('%Y%m%dT%H%M%S%fZ')}"
@@ -117,52 +140,64 @@ def extract_table(settings, s3, bucket, table_name, run_id=None):
                 raise ValueError(f"{table_name}: source updated_at moved behind its watermark")
 
         files = published_rows = scanned_rows = 0
-        if max_updated_at is not None:
-            path, count, boundary_hash = write_parquet(
-                connection, TABLES[table_name], table_name, last_updated_at, max_updated_at, started_at
+        boundary_changed = False
+        if last_updated_at is not None:
+            current_hash, scanned_rows = boundary_fingerprint(
+                connection, TABLES[table_name], table_name, last_updated_at
             )
-            scanned_rows = count
+            boundary_changed = current_hash != last_boundary_hash
+
+        if max_updated_at is not None and (last_updated_at is None or max_updated_at > last_updated_at or boundary_changed):
+            path, count, boundary_hash = write_parquet(
+                connection, TABLES[table_name], table_name, last_updated_at, max_updated_at,
+                started_at, boundary_changed,
+            )
+            scanned_rows += count
             if path is None:
                 raise ValueError(f"{table_name}: maximum updated_at has no source rows")
             try:
-                if max_updated_at != last_updated_at or boundary_hash != last_boundary_hash:
-                    batch_id = f"{table_name}_{started_at.strftime('%Y%m%dT%H%M%S%fZ')}_{uuid4().hex[:8]}"
-                    day = max_updated_at.astimezone(timezone.utc).strftime("%Y-%m-%d")
-                    prefix = f"bronze/postgres_oltp/{table_name}/dt={day}/batch_id={batch_id}/"
-                    file_name = "part-0000.parquet"
-                    with path.open("rb") as data_file:
-                        sha256 = hashlib.file_digest(data_file, "sha256").hexdigest()
-                    s3.upload_file(str(path), bucket, prefix + file_name)
-                    # PostgreSQL timestamps have microsecond precision; this includes the old boundary group.
-                    lower = last_updated_at - timedelta(microseconds=1) if last_updated_at else None
-                    manifest = {
-                        "run_id": run_id,
-                        "batch_id": batch_id,
-                        "source_system": "postgres_oltp",
-                        "dataset": table_name,
-                        "load_type": "snapshot" if last_updated_at is None else "delta",
-                        "window": {
-                            "lower_boundary_exclusive": utc_text(lower) if lower else None,
-                            "upper_boundary_inclusive": utc_text(max_updated_at),
-                        },
-                        "status": "committed",
+                # PostgreSQL timestamps have microsecond precision; subtract one tick only when replaying the boundary.
+                lower = last_updated_at - timedelta(microseconds=1) if boundary_changed else last_updated_at
+                batch_id = (
+                    f"{table_name}_{batch_stamp(lower) if lower else 'snapshot'}_"
+                    f"{batch_stamp(max_updated_at)}_{uuid4().hex[:8]}"
+                )
+                day = max_updated_at.astimezone(timezone.utc).strftime("%Y-%m-%d")
+                prefix = f"bronze/postgres_oltp/{table_name}/dt={day}/batch_id={batch_id}/"
+                file_name = "part-0000.parquet"
+                with path.open("rb") as data_file:
+                    sha256 = hashlib.file_digest(data_file, "sha256").hexdigest()
+                s3.upload_file(str(path), bucket, prefix + file_name)
+                manifest = {
+                    "run_id": run_id,
+                    "batch_id": batch_id,
+                    "source_system": "postgres_oltp",
+                    "dataset": table_name,
+                    "load_type": "snapshot" if last_updated_at is None else "delta",
+                    "window": {
+                        "lower_boundary_exclusive": utc_text(lower) if lower else None,
+                        "upper_boundary_inclusive": utc_text(max_updated_at),
+                    },
+                    "status": "committed",
+                    "row_count": count,
+                    "files": [{
+                        "name": file_name,
                         "row_count": count,
-                        "files": [{
-                            "name": file_name,
-                            "row_count": count,
-                            "size_bytes": path.stat().st_size,
-                            "sha256": sha256,
-                        }],
-                        "started_at": utc_text(started_at),
-                        "finished_at": utc_text(datetime.now(timezone.utc)),
-                    }
-                    s3.put_object(
-                        Bucket=bucket, Key=prefix + "_manifest.json",
-                        Body=json.dumps(manifest).encode("utf-8"), ContentType="application/json",
-                    )
-                    files, published_rows = 1, count
+                        "size_bytes": path.stat().st_size,
+                        "sha256": sha256,
+                    }],
+                    "started_at": utc_text(started_at),
+                    "finished_at": utc_text(datetime.now(timezone.utc)),
+                }
+                s3.put_object(
+                    Bucket=bucket, Key=prefix + "_manifest.json",
+                    Body=json.dumps(manifest).encode("utf-8"), ContentType="application/json",
+                )
+                files, published_rows = 1, count
             finally:
                 path.unlink(missing_ok=True)
+        else:
+            boundary_hash = last_boundary_hash
 
         with connection.cursor() as cursor:
             cursor.execute(

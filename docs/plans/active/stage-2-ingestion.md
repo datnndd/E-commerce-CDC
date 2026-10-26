@@ -24,8 +24,8 @@ Out of scope: running the simulator on the main RDS source before downstream sna
 
 ## Approach
 
-1. Re-read each table's saved `updated_at` group and compare its source-row fingerprint with `cdc_watermark.last_boundary_hash`. An unchanged source creates no new objects.
-2. Write one Parquet file per changed batch, then upload one committed manifest as the final S3 object. Advance watermark and fingerprint only after that upload. A retry uses a fresh batch ID; Silver deduplicates overlapping committed batches.
+1. Fingerprint each table's saved `updated_at` group and compare it with `cdc_watermark.last_boundary_hash`. If unchanged, write only newer rows; if changed, include the boundary group. An unchanged source creates no new objects.
+2. Write one Parquet file per changed batch, then upload one committed manifest as the final S3 object. Encode the exact lower/upper UTC window in the batch ID, with a random suffix for retries. Advance watermark and fingerprint only after that upload. Silver deduplicates overlapping committed batches.
 3. Check the initial extract, an unchanged rerun, a same-timestamp addition, and upload failure using isolated source and fake S3 state before running against RDS.
 4. Add clickstream and API Bronze ingestion, then prove all three sources on S3.
 
@@ -48,6 +48,7 @@ Out of scope: running the simulator on the main RDS source before downstream sna
 
 - 2026-10-25: Use a content-addressed file for the maximum `updated_at` group. This reconciles the plan's timestamp-tie warning with its zero-new-file rerun criterion without adding another control table.
 - 2026-10-26: The owner chose manifest-committed at-least-once batches with a new ID per retry, and one boundary fingerprint in the existing watermark. The previous content-addressed object scheme and persistent attempt ledger are superseded.
+- 2026-10-26: Encode the actual lower/upper timestamp window in the batch ID. Check the saved boundary hash before Parquet writing, so an unchanged boundary is excluded from the new batch.
 
 ## Validation
 
@@ -56,6 +57,7 @@ Out of scope: running the simulator on the main RDS source before downstream sna
 - Full snapshot proof on the new layout: loaded all nine Olist CSVs with zero quarantine into a disposable database at `6c4d9b7e2a11`. All nine tables extracted to 9 committed manifests and 9 Parquet files through a fake S3 client; each manifest row count matched its source table and each file SHA-256 matched its bytes. An immediate rerun of all nine tables created zero new objects. No AWS upload occurred in this proof.
 - 2026-10-26 local S3 proof: a separate bucket showed Block Public Access on, ACLs disabled, and SSE-S3. AWS CLI `head-bucket` confirmed `ap-southeast-1`; boto3 using a temporary CLI-backed profile passed PUT, GET, LIST, and DELETE for an isolated smoke object. The ignored `.env` selects this bucket and profile.
 - 2026-10-26 manifest smoke proof: the new extractor published a two-row dummy `products` batch from disposable local PostgreSQL to the test S3 bucket. A GET of its manifest and Parquet verified committed status, source row count, exact file size, and SHA-256. Both smoke objects were deleted afterward. This was not an RDS extraction.
+- 2026-10-26 window optimization proof: 3 focused PostgreSQL tests passed. A changed saved boundary replayed its rows; an unchanged boundary followed by a newer row produced a one-row Parquet file and a batch ID containing the exact lower/upper UTC window. A fresh full Olist snapshot again produced 9 manifests for 9 tables; the immediate rerun scanned each boundary group and created zero objects.
 - Integration proof: EC2/RDS to the project S3 bucket remains pending.
 - Local CDC extraction against private RDS is pending a network path; the local `.env` currently names its private endpoint and local Docker PostgreSQL is stopped.
 - Repository checks: compile, `uv lock --check`, and `git diff --check`.
