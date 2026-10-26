@@ -135,7 +135,7 @@
 - [x] Tạo bảng control trong Postgres nguồn: `cdc_watermark(table_name, last_updated_at, last_run_at)` (người dùng báo đã áp dụng `d79b3fd3ea12` trên RDS); migration `6c4d9b7e2a11` bổ sung `last_boundary_hash`, chưa xác nhận đã áp dụng trên RDS.
 - [x] Viết `ingestion/cdc_extract.py` (Phase 1 — timestamp CDC; đã kiểm thử với PostgreSQL tạm và S3 giả lập, chưa chạy EC2/RDS → S3 thật):
   - Với từng bảng: tính lại hash của nhóm `updated_at = :last_watermark`. Nếu không đổi, chỉ ghi dòng `updated_at > :last_watermark`; nếu đổi, ghi lại nhóm biên cùng các dòng mới. Lưu hash nhóm timestamp lớn nhất sau khi commit để lượt không đổi tạo 0 file; Silver dedup khi nhóm biên được đọc lại.
-  - Mỗi lượt có thay đổi tạo `s3://<bucket>/bronze/postgres_oltp/<table>/dt=YYYY-MM-DD/batch_id=<table>_<lower>_<upper>_<suffix>/part-0000.parquet`, rồi ghi `_manifest.json` với `status=committed` sau khi Parquet upload thành công. Tên batch mang hai mốc cửa sổ; suffix giữ ID mới cho retry. Silver chỉ đọc file được manifest tham chiếu.
+  - Mỗi lượt có thay đổi tạo `s3://<bucket>/bronze/postgres_oltp/<table>/dt=YYYY-MM-DD/batch_id=<table>_<lower-HHMM>_<upper-HHMM>_<suffix>/part-0000.parquet`, rồi ghi `_manifest.json` với `status=committed` sau khi Parquet upload thành công. Tên batch mang giờ/phút UTC của hai mốc; manifest giữ timestamp chính xác và suffix giữ ID mới cho retry. Silver chỉ đọc file được manifest tham chiếu.
   - Chỉ cập nhật watermark **sau khi manifest upload thành công**. Retry dùng batch ID mới; nếu manifest thành công nhưng DB commit lỗi, Silver dedup batch lặp.
   - Thêm cột `ingested_at, source_table` vào file Bronze
 - [ ] Viết `ingestion/ingest_logs.py`: nén + upload clickstream `.json.gz` lên `bronze/clickstream/dt=.../hour=.../`

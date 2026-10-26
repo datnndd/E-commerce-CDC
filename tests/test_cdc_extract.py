@@ -97,7 +97,7 @@ class CdcExtractTest(unittest.TestCase):
         self.assertEqual(first["load_type"], "snapshot")
         self.assertIsNone(first["window"]["lower_boundary_exclusive"])
         self.assertEqual(first["window"]["upper_boundary_inclusive"], "2020-01-02T00:00:00Z")
-        self.assertRegex(first["batch_id"], r"^products_snapshot_20200102T000000000000Z_[0-9a-f]{8}$")
+        self.assertRegex(first["batch_id"], r"^products_snapshot_0000_[0-9a-f]{8}$")
         self.assert_batch(first, 2)
         self.assertEqual([event[0] for event in self.s3.events], ["data", "manifest"])
 
@@ -117,7 +117,7 @@ class CdcExtractTest(unittest.TestCase):
         self.assertEqual(second["window"]["lower_boundary_exclusive"], "2020-01-01T23:59:59.999999Z")
         self.assertRegex(
             second["batch_id"],
-            r"^products_20200101T235959999999Z_20200102T000000000000Z_[0-9a-f]{8}$",
+            r"^products_2359_0000_[0-9a-f]{8}$",
         )
         table = self.assert_batch(second, 2)
         self.assertIn("ingested_at", table.column_names)
@@ -135,7 +135,7 @@ class CdcExtractTest(unittest.TestCase):
         self.assertEqual(third["window"]["lower_boundary_exclusive"], "2020-01-02T00:00:00Z")
         self.assertRegex(
             third["batch_id"],
-            r"^products_20200102T000000000000Z_20200103T000000000000Z_[0-9a-f]{8}$",
+            r"^products_0000_0000_[0-9a-f]{8}$",
         )
         self.assert_batch(third, 1)
 

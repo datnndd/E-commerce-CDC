@@ -116,7 +116,7 @@ def utc_text(value):
 
 
 def batch_stamp(value):
-    return value.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    return value.astimezone(timezone.utc).strftime("%H%M")
 
 
 def extract_table(settings, s3, bucket, table_name, run_id=None):
