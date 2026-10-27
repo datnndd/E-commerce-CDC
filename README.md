@@ -99,27 +99,26 @@ The simulator writes a JSON run report under `logs/simulator/`; the clickstream 
 
 ### Stage 2: CDC control table
 
-The main RDS source can add `cdc_watermark` and its boundary fingerprint without applying the Stage 1C source changes. With `.env` pointing to RDS at `d79b3fd3ea12`, run:
+The main RDS source needs the `cdc_watermark` table from revision `d79b3fd3ea12`. If the database is already there, check it with:
 
 ```bash
-uv run alembic -c sources/oltp/alembic.ini upgrade 6c4d9b7e2a11
 uv run alembic -c sources/oltp/alembic.ini current
 ```
 
-Expect revision `6c4d9b7e2a11` and an empty table with `table_name`, `last_updated_at`, `last_run_at`, and `last_boundary_hash`. The fingerprint lets an unchanged boundary timestamp produce zero new files. The separate Stage 1C migration remains unapplied on the main source; use the explicit revision above, not `head`. An isolated database that already includes 1C can upgrade to merge revision `94f012a6c7b3`.
+Expect at least revision `d79b3fd3ea12`, with `table_name`, `last_updated_at`, and `last_run_at`. The later `6c4d9b7e2a11` boundary-hash migration remains in history but this 15-minute-overlap extractor does not require it. The separate Stage 1C migration remains unapplied on the main source; do not use `upgrade head` there. An isolated database that already includes 1C can use merge revision `94f012a6c7b3`.
 
 ### Stage 2: PostgreSQL to S3 Bronze
 
-On EC2, set `S3_BUCKET` in `.env` to the project bucket name. The instance role needs `s3:PutObject` on `bronze/postgres_oltp/*`. The bucket is in `ap-southeast-1`. With `.env` pointing to the RDS source at revision `6c4d9b7e2a11`, run from the repository root:
+On EC2, set `S3_BUCKET` in `.env` to the project bucket name. The instance role needs `s3:PutObject` on `bronze/postgres_oltp/*`. The bucket is in `ap-southeast-1`. With `.env` pointing to the RDS source at revision `d79b3fd3ea12` or later, run from the repository root:
 
 ```bash
 uv sync --frozen
 uv run --frozen python -m ingestion.cdc_extract
 ```
 
-Use `--table orders` to check one table first. Each changed run creates `bronze/postgres_oltp/<table>/dt=YYYY-MM-DD/batch_id=<table>_<lower-HHMM>_<upper-HHMM>_<suffix>/part-0000.parquet` and then `_manifest.json`; `dt` is the UTC date of the batch's `started_at` ingestion time. The batch ID uses UTC hour/minute labels from the source window and a short random suffix so retries get distinct IDs; initial snapshots use `snapshot` for the lower bound. Read the full source window from the manifest, not from `dt` or the minute-only batch ID. The manifest's window holds the exact UTC dates, seconds and microseconds, including when a window crosses midnight. Silver must read only batches whose manifest has `status: committed`, and only the files listed there. The manifest records the run and batch IDs, source, load type, timestamp window, physical row count, per-file size and SHA-256, and start/finish times. The first batch has `load_type: snapshot` and a null lower boundary; later batches are `delta`. Each Parquet row includes `ingested_at` and `source_table`.
+Use `--table orders` to check one table first. Each poll with source rows in its window writes `bronze/postgres_oltp/<table>/load_date=YYYY-MM-DD/run_id=YYYYMMDDTHHMMSSffffff/part-0000.parquet`, then `_manifest.json`, then an empty `_SUCCESS` marker. `load_date` is the UTC ingestion date; `run_id` is a UTC start timestamp with microseconds so nearby runs have separate paths. The manifest retains the exact source-time window. Silver reads only runs with both `_SUCCESS` and a committed manifest, and only the files listed in that manifest. The manifest records the run ID, source, load type, timestamp window, physical row count, per-file size and SHA-256, and start/finish times. The first run has `load_type: snapshot` and a null lower boundary; later runs are `delta`. Each Parquet row includes `ingested_at` and `source_table`.
 
-The source watermark advances only after the manifest upload succeeds. A failed attempt can leave an unreferenced Parquet object; the next run creates a new batch ID and re-reads from the old watermark. If the manifest succeeds but the database commit fails, Bronze can contain two committed batches with overlapping rows. Silver must deduplicate by source key and row version/hash. On each poll, the extractor first fingerprints rows at the saved `updated_at`. If that group is unchanged, Parquet contains only rows with `updated_at > watermark`, and the manifest's lower boundary is the watermark. If the group changed, Parquet also contains the old boundary group; its exclusive lower bound is one PostgreSQL microsecond before the watermark. `row_count` counts actual Parquet rows, including any replayed boundary rows. Polling cannot detect physical deletes or updates backdated below the saved watermark. Orphan cleanup needs a separate retention policy and job; this extractor does not delete S3 objects.
+For each later poll, the exclusive lower bound is `last_updated_at - 15 minutes` and the inclusive upper bound is the source's current maximum `updated_at`. The first poll takes a full snapshot. This temporary overlap re-reads recent rows even when the source is unchanged; every such poll can produce a new run, so Silver must deduplicate by source key and row version/hash. The source watermark advances only after `_SUCCESS` uploads. A failed attempt can leave data or a manifest without `_SUCCESS`; Silver ignores that run. If S3 succeeds but the database commit fails, a retry can leave two successful runs with overlapping rows. Polling still misses physical deletes and writes backdated more than 15 minutes below the saved watermark. Orphan cleanup needs a separate retention policy and job; this extractor does not delete S3 objects.
 
 For local development, set `AWS_PROFILE` in the ignored `.env` to a temporary-credential profile that boto3 can use. AWS CLI v2 can obtain temporary credentials from an existing Console session with [`aws login`](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sign-in.html); botocore versions without the CRT login provider can use the documented `credential_process` profile backed by `aws configure export-credentials`. Leave `AWS_PROFILE` unset on EC2 so boto3 uses the instance role. Keep the test bucket name and AWS login cache outside Git. A private RDS endpoint still requires network access from the local machine; the S3 profile alone does not provide it.
 

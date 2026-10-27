@@ -8,7 +8,7 @@ Active
 
 ## Outcome
 
-The frozen RDS snapshot and later source changes reach S3 Bronze as manifest-committed Parquet batches, with a per-table watermark and no new objects when an unchanged source is polled again. Clickstream and API sources complete the remaining Stage 2 scope.
+The frozen RDS snapshot and later source changes reach S3 Bronze as Parquet runs with a manifest and final `_SUCCESS` marker. Later polls replay a 15-minute overlap from the per-table watermark. Clickstream and API sources complete the remaining Stage 2 scope.
 
 ## Context
 
@@ -24,21 +24,21 @@ Out of scope: running the simulator on the main RDS source before downstream sna
 
 ## Approach
 
-1. Fingerprint each table's saved `updated_at` group and compare it with `cdc_watermark.last_boundary_hash`. If unchanged, write only newer rows; if changed, include the boundary group. An unchanged source creates no new objects.
-2. Write one Parquet file per changed batch, then upload one committed manifest as the final S3 object. Encode the lower/upper UTC hour and minute in the batch ID, with a random suffix for retries; keep exact window timestamps in the manifest. Advance watermark and fingerprint only after that upload. Silver deduplicates overlapping committed batches.
-3. Check the initial extract, an unchanged rerun, a same-timestamp addition, and upload failure using isolated source and fake S3 state before running against RDS.
+1. Take an initial snapshot, then poll `(last_updated_at - 15 minutes, max(updated_at)]` for each table. Each poll with rows writes a distinct run even if its overlap contains only previously seen rows.
+2. Upload Parquet, a committed manifest, and finally `_SUCCESS` under `load_date=<UTC ingestion day>/run_id=<UTC start timestamp>/`. Advance the watermark only after `_SUCCESS`. Silver reads only successful runs and deduplicates overlapping source rows.
+3. Check snapshot, unchanged-source replay, same-timestamp addition, and each upload failure using an isolated source and fake S3 state before running against RDS.
 4. Add clickstream and API Bronze ingestion, then prove all three sources on S3.
 
 ## Risks And Recovery
 
-- Timestamp polling cannot see physical deletes or writes backdated below the watermark; Stage 1C uses soft delete and updates `updated_at`.
+- Timestamp polling cannot see physical deletes or writes backdated more than 15 minutes below the watermark; Stage 1C uses soft delete and updates `updated_at`.
 - An S3 upload can succeed while a database commit fails. A retry creates another committed batch; Silver must deduplicate source rows.
-- A failed upload can leave unreferenced Parquet. A separately specified cleanup job is needed before automatic deletion; this extractor does not delete S3 objects.
+- A failed upload can leave an incomplete run without `_SUCCESS`. A separately specified cleanup job is needed before automatic deletion; this extractor does not delete S3 objects.
 
 ## Progress
 
 - [x] Add the `cdc_watermark` migration. The user reports upgrading EC2/RDS to `d79b3fd3ea12`; RDS state has not been observed locally.
-- [ ] Apply `6c4d9b7e2a11` to RDS before running the new extractor; the 1C test branch can use merge revision `94f012a6c7b3`.
+- [x] Simplify the extractor to use the control table already at `d79b3fd3ea12`; the older boundary-hash migration remains in history but is no longer a prerequisite.
 - [x] Implement PostgreSQL extraction and validate against a disposable PostgreSQL database with a fake S3 client.
 - [x] Create a separate test bucket in `ap-southeast-1` and verify local SDK access with temporary Console-backed credentials; bucket name and login cache remain outside Git.
 - [ ] Implement clickstream and API ingestion.
@@ -51,10 +51,13 @@ Out of scope: running the simulator on the main RDS source before downstream sna
 - 2026-10-26: Encode the actual lower/upper timestamp window in the batch ID. Check the saved boundary hash before Parquet writing, so an unchanged boundary is excluded from the new batch.
 - 2026-10-26: Shorten both batch-ID window labels to UTC `HHMM`; the manifest retains exact dates and sub-minute precision.
 - 2026-10-27: Partition PostgreSQL Bronze by the UTC date of ingestion `started_at`. The source `updated_at` window, including its upper date, belongs to the manifest; `dt=` does not encode source time.
+- 2026-10-27: Replace batch IDs and boundary hashing with `load_date=/run_id=/`, a 15-minute polling overlap, and a final `_SUCCESS` marker. The owner chose to retain the existing `bronze/postgres_oltp/<table>/` source prefix. An unchanged source can produce overlap files; Silver deduplication is required.
 
 ## Validation
 
-- Focused proof on the new layout: `tests/test_cdc_extract.py` passed 3 tests on disposable PostgreSQL 18.6 for snapshot, unchanged rerun, same-timestamp addition, upload failure, manifest failure, and a committed manifest followed by database failure and retry. The latter produces overlapping committed batches as designed.
+- 2026-10-27 current layout proof: 4 focused tests passed on disposable PostgreSQL 18.6 with the `d79b3fd3ea12` control-table shape. They covered snapshot, repeated 15-minute overlap, a late row inside the overlap, upload/manifest/`_SUCCESS` failures, and retry after database-update failure. The run path contained Parquet, manifest, then `_SUCCESS`; the watermark stayed unchanged on S3 failure.
+- The results below are historical proof for earlier batch layouts; they do not establish the current `load_date=/run_id=/` layout.
+- Earlier batch-layout proof: `tests/test_cdc_extract.py` passed 3 tests on disposable PostgreSQL 18.6 for snapshot, unchanged rerun, same-timestamp addition, upload failure, manifest failure, and a committed manifest followed by database failure and retry. The latter produced overlapping committed batches as designed.
 - Migration proof: a disposable DB upgraded from `d79b3fd3ea12` to `6c4d9b7e2a11` and had `last_boundary_hash` without Stage 1C's `current_price`; a second disposable DB reached merge head `94f012a6c7b3`.
 - Full snapshot proof on the new layout: loaded all nine Olist CSVs with zero quarantine into a disposable database at `6c4d9b7e2a11`. All nine tables extracted to 9 committed manifests and 9 Parquet files through a fake S3 client; each manifest row count matched its source table and each file SHA-256 matched its bytes. An immediate rerun of all nine tables created zero new objects. No AWS upload occurred in this proof.
 - 2026-10-26 local S3 proof: a separate bucket showed Block Public Access on, ACLs disabled, and SSE-S3. AWS CLI `head-bucket` confirmed `ap-southeast-1`; boto3 using a temporary CLI-backed profile passed PUT, GET, LIST, and DELETE for an isolated smoke object. The ignored `.env` selects this bucket and profile.
