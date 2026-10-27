@@ -8,7 +8,7 @@ Active
 
 ## Outcome
 
-The frozen RDS snapshot and later source changes reach S3 Bronze as Parquet runs with a manifest and final `_SUCCESS` marker. Later polls replay a 15-minute overlap from the per-table watermark. Clickstream and API sources complete the remaining Stage 2 scope.
+The frozen RDS snapshot and later source changes reach S3 Bronze as Parquet runs with a committed manifest written last. Later polls replay a 15-minute overlap from the per-table watermark. Clickstream and API sources complete the remaining Stage 2 scope.
 
 ## Context
 
@@ -25,7 +25,7 @@ Out of scope: running the simulator on the main RDS source before downstream sna
 ## Approach
 
 1. Take an initial snapshot, then poll `(last_updated_at - 15 minutes, max(updated_at)]` for each table. Each poll with rows writes a distinct run even if its overlap contains only previously seen rows.
-2. Upload Parquet, a committed manifest, and finally `_SUCCESS` under `load_date=<UTC ingestion day>/run_id=<UTC start timestamp>/`. Advance the watermark only after `_SUCCESS`. Silver reads only successful runs and deduplicates overlapping source rows.
+2. Upload Parquet, then a committed manifest as the final object under `load_date=<UTC ingestion day>/run_id=<UTC start timestamp>/`. Advance the watermark only after the manifest upload. Silver reads only committed manifests and deduplicates overlapping source rows.
 3. Check snapshot, unchanged-source replay, same-timestamp addition, and each upload failure using an isolated source and fake S3 state before running against RDS.
 4. Add clickstream and API Bronze ingestion, then prove all three sources on S3.
 
@@ -33,7 +33,7 @@ Out of scope: running the simulator on the main RDS source before downstream sna
 
 - Timestamp polling cannot see physical deletes or writes backdated more than 15 minutes below the watermark; Stage 1C uses soft delete and updates `updated_at`.
 - An S3 upload can succeed while a database commit fails. A retry creates another committed batch; Silver must deduplicate source rows.
-- A failed upload can leave an incomplete run without `_SUCCESS`. A separately specified cleanup job is needed before automatic deletion; this extractor does not delete S3 objects.
+- A failed upload can leave an unreferenced Parquet object without a committed manifest. A separately specified cleanup job is needed before automatic deletion; this extractor does not delete S3 objects.
 
 ## Progress
 
@@ -52,11 +52,13 @@ Out of scope: running the simulator on the main RDS source before downstream sna
 - 2026-10-26: Shorten both batch-ID window labels to UTC `HHMM`; the manifest retains exact dates and sub-minute precision.
 - 2026-10-27: Partition PostgreSQL Bronze by the UTC date of ingestion `started_at`. The source `updated_at` window, including its upper date, belongs to the manifest; `dt=` does not encode source time.
 - 2026-10-27: Replace batch IDs and boundary hashing with `load_date=/run_id=/`, a 15-minute polling overlap, and a final `_SUCCESS` marker. The owner chose to retain the existing `bronze/postgres_oltp/<table>/` source prefix. An unchanged source can produce overlap files; Silver deduplication is required.
+- 2026-10-27: Remove `_SUCCESS` at the owner's request. The committed manifest is the sole readiness signal, written after Parquet; watermark advancement follows its successful upload.
 
 ## Validation
 
-- 2026-10-27 current layout proof: 4 focused tests passed on disposable PostgreSQL 18.6 with the `d79b3fd3ea12` control-table shape. They covered snapshot, repeated 15-minute overlap, a late row inside the overlap, upload/manifest/`_SUCCESS` failures, and retry after database-update failure. The run path contained Parquet, manifest, then `_SUCCESS`; the watermark stayed unchanged on S3 failure.
-- The results below are historical proof for earlier batch layouts; they do not establish the current `load_date=/run_id=/` layout.
+- 2026-10-27 manifest-only proof: 4 focused tests passed on disposable PostgreSQL 18.6. A run contains only Parquet and a committed manifest, uploaded in that order. Upload failures leave the watermark unchanged; a database-update failure after manifest upload is retried as a separate run. The 15-minute overlap and late-row boundary still pass.
+- 2026-10-27 previous marker layout proof: 4 focused tests passed on disposable PostgreSQL 18.6 with the `d79b3fd3ea12` control-table shape. They covered snapshot, repeated 15-minute overlap, a late row inside the overlap, upload/manifest/`_SUCCESS` failures, and retry after database-update failure. The watermark stayed unchanged on S3 failure.
+- The results below are historical proof for earlier layouts; they do not establish the current manifest-only completion rule.
 - Earlier batch-layout proof: `tests/test_cdc_extract.py` passed 3 tests on disposable PostgreSQL 18.6 for snapshot, unchanged rerun, same-timestamp addition, upload failure, manifest failure, and a committed manifest followed by database failure and retry. The latter produced overlapping committed batches as designed.
 - Migration proof: a disposable DB upgraded from `d79b3fd3ea12` to `6c4d9b7e2a11` and had `last_boundary_hash` without Stage 1C's `current_price`; a second disposable DB reached merge head `94f012a6c7b3`.
 - Full snapshot proof on the new layout: loaded all nine Olist CSVs with zero quarantine into a disposable database at `6c4d9b7e2a11`. All nine tables extracted to 9 committed manifests and 9 Parquet files through a fake S3 client; each manifest row count matched its source table and each file SHA-256 matched its bytes. An immediate rerun of all nine tables created zero new objects. No AWS upload occurred in this proof.

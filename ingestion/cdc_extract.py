@@ -150,7 +150,6 @@ def extract_table(settings, s3, bucket, table_name):
                     Bucket=bucket, Key=prefix + "_manifest.json",
                     Body=json.dumps(manifest).encode("utf-8"), ContentType="application/json",
                 )
-                s3.put_object(Bucket=bucket, Key=prefix + "_SUCCESS", Body=b"")
                 files, published_rows = 1, count
             finally:
                 path.unlink(missing_ok=True)

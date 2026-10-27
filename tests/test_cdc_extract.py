@@ -19,7 +19,6 @@ class FakeS3:
         self.objects = {}
         self.fail_upload = False
         self.fail_manifest = False
-        self.fail_success = False
         self.events = []
 
     def upload_file(self, filename, bucket, key):
@@ -28,13 +27,11 @@ class FakeS3:
         self.objects[key] = Path(filename).read_bytes()
         self.events.append(("data", key))
 
-    def put_object(self, *, Bucket, Key, Body, ContentType=None):
-        if Key.endswith("/_manifest.json") and self.fail_manifest:
+    def put_object(self, *, Bucket, Key, Body, ContentType):
+        if self.fail_manifest:
             raise RuntimeError("injected manifest failure")
-        if Key.endswith("/_SUCCESS") and self.fail_success:
-            raise RuntimeError("injected success failure")
         self.objects[Key] = Body
-        self.events.append(("success" if Key.endswith("/_SUCCESS") else "manifest", Key))
+        self.events.append(("manifest", Key))
 
 
 @unittest.skipUnless(os.environ.get("CDC_TEST_PG_PORT"), "set CDC_TEST_PG_PORT for disposable PostgreSQL")
@@ -88,9 +85,8 @@ class CdcExtractTest(unittest.TestCase):
         prefix = f"bronze/postgres_oltp/products/load_date={ingestion_day}/run_id={manifest['run_id']}/"
         self.assertEqual(
             {key.removeprefix(prefix) for key in self.s3.objects if key.startswith(prefix)},
-            {"part-0000.parquet", "_manifest.json", "_SUCCESS"},
+            {"part-0000.parquet", "_manifest.json"},
         )
-        self.assertEqual(self.s3.objects[prefix + "_SUCCESS"], b"")
         data_key = prefix + "part-0000.parquet"
         data = self.s3.objects[data_key]
         self.assertEqual(manifest["files"][0]["size_bytes"], len(data))
@@ -100,17 +96,17 @@ class CdcExtractTest(unittest.TestCase):
 
     def test_snapshot_replay_and_same_timestamp(self):
         extract_table(self.settings, self.s3, "test-bucket", "products")
-        self.assertEqual(len(self.s3.objects), 3)
+        self.assertEqual(len(self.s3.objects), 2)
         self.assertEqual(self.watermark(), datetime(2020, 1, 2, tzinfo=timezone.utc))
         first = self.manifests()[0]
         self.assertEqual(first["load_type"], "snapshot")
         self.assertIsNone(first["window"]["lower_boundary_exclusive"])
         self.assertEqual(first["window"]["upper_boundary_inclusive"], "2020-01-02T00:00:00Z")
         self.assert_batch(first, 2)
-        self.assertEqual([event[0] for event in self.s3.events], ["data", "manifest", "success"])
+        self.assertEqual([event[0] for event in self.s3.events], ["data", "manifest"])
 
         extract_table(self.settings, self.s3, "test-bucket", "products")
-        self.assertEqual(len(self.s3.objects), 6)
+        self.assertEqual(len(self.s3.objects), 4)
         replay = self.manifests()[1]
         self.assertEqual(replay["window"]["lower_boundary_exclusive"], "2020-01-01T23:45:00Z")
         self.assert_batch(replay, 1)
@@ -121,7 +117,7 @@ class CdcExtractTest(unittest.TestCase):
         ) as connection:
             connection.execute("INSERT INTO products VALUES (%s, %s)", ("p3", datetime(2020, 1, 2, tzinfo=timezone.utc)))
         extract_table(self.settings, self.s3, "test-bucket", "products")
-        self.assertEqual(len(self.s3.objects), 9)
+        self.assertEqual(len(self.s3.objects), 6)
         third = self.manifests()[2]
         self.assertNotEqual(first["run_id"], third["run_id"])
         self.assertEqual(third["load_type"], "delta")
@@ -130,7 +126,7 @@ class CdcExtractTest(unittest.TestCase):
         self.assertIn("ingested_at", table.column_names)
         self.assertIn("source_table", table.column_names)
         extract_table(self.settings, self.s3, "test-bucket", "products")
-        self.assertEqual(len(self.s3.objects), 12)
+        self.assertEqual(len(self.s3.objects), 8)
 
         with psycopg.connect(
             host="127.0.0.1", port=self.settings["POSTGRES_PORT"], dbname="cdc_test",
@@ -142,7 +138,7 @@ class CdcExtractTest(unittest.TestCase):
         self.assertEqual(latest["window"]["lower_boundary_exclusive"], "2020-01-01T23:45:00Z")
         self.assert_batch(latest, 3)
 
-    def test_failed_upload_manifest_and_success_leave_watermark_unchanged(self):
+    def test_failed_upload_and_manifest_leave_watermark_unchanged(self):
         extract_table(self.settings, self.s3, "test-bucket", "products")
         with psycopg.connect(
             host="127.0.0.1", port=self.settings["POSTGRES_PORT"], dbname="cdc_test",
@@ -153,7 +149,7 @@ class CdcExtractTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "injected upload failure"):
             extract_table(self.settings, self.s3, "test-bucket", "products")
         self.assertEqual(self.watermark(), datetime(2020, 1, 2, tzinfo=timezone.utc))
-        self.assertEqual(len(self.s3.objects), 3)
+        self.assertEqual(len(self.s3.objects), 2)
 
         self.s3.fail_upload = False
         self.s3.fail_manifest = True
@@ -161,21 +157,14 @@ class CdcExtractTest(unittest.TestCase):
             extract_table(self.settings, self.s3, "test-bucket", "products")
         self.assertEqual(self.watermark(), datetime(2020, 1, 2, tzinfo=timezone.utc))
         self.assertEqual(len(self.manifests()), 1)
-        self.assertEqual(len(self.s3.objects), 4)
+        self.assertEqual(len(self.s3.objects), 3)
 
         self.s3.fail_manifest = False
-        self.s3.fail_success = True
-        with self.assertRaisesRegex(RuntimeError, "injected success failure"):
-            extract_table(self.settings, self.s3, "test-bucket", "products")
-        self.assertEqual(self.watermark(), datetime(2020, 1, 2, tzinfo=timezone.utc))
-        self.assertEqual(sum(key.endswith("/_SUCCESS") for key in self.s3.objects), 1)
-
-        self.s3.fail_success = False
         extract_table(self.settings, self.s3, "test-bucket", "products")
         self.assertEqual(self.watermark(), datetime(2020, 1, 3, tzinfo=timezone.utc))
-        self.assertEqual(len(self.manifests()), 3)
-        self.assertEqual(len(self.s3.objects), 9)
-        self.assert_batch(self.manifests()[2], 2)
+        self.assertEqual(len(self.manifests()), 2)
+        self.assertEqual(len(self.s3.objects), 5)
+        self.assert_batch(self.manifests()[1], 2)
 
     def test_late_row_inside_fifteen_minute_overlap(self):
         extract_table(self.settings, self.s3, "test-bucket", "products")

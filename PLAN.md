@@ -135,8 +135,8 @@
 - [x] Tạo bảng control trong Postgres nguồn: `cdc_watermark(table_name, last_updated_at, last_run_at)` (người dùng báo đã áp dụng `d79b3fd3ea12` trên RDS). Migration `6c4d9b7e2a11` bổ sung `last_boundary_hash` còn trong lịch sử nhưng không cần cho extractor overlap 15 phút.
 - [x] Viết `ingestion/cdc_extract.py` (Phase 1 — timestamp CDC; đã kiểm thử với PostgreSQL tạm và S3 giả lập, chưa chạy EC2/RDS → S3 thật):
   - Lần đầu snapshot toàn bảng. Những lần sau lấy `updated_at > last_watermark - 15 phút` và `updated_at <= max(updated_at)`; đây là overlap tạm thời, có dòng lặp giữa các run.
-  - Mỗi poll có dữ liệu tạo `s3://<bucket>/bronze/postgres_oltp/<table>/load_date=YYYY-MM-DD/run_id=YYYYMMDDTHHMMSSffffff/part-0000.parquet`, rồi `_manifest.json`, cuối cùng `_SUCCESS`. `load_date` là ngày UTC bắt đầu ingestion; manifest giữ cửa sổ nguồn đầy đủ. Silver chỉ đọc file được manifest của run có `_SUCCESS` tham chiếu.
-  - Chỉ cập nhật watermark **sau khi `_SUCCESS` upload thành công**. Retry dùng run ID mới; nếu S3 thành công nhưng DB commit lỗi, Silver dedup các run lặp.
+  - Mỗi poll có dữ liệu tạo `s3://<bucket>/bronze/postgres_oltp/<table>/load_date=YYYY-MM-DD/run_id=YYYYMMDDTHHMMSSffffff/part-0000.parquet`, rồi `_manifest.json` sau cùng với `status=committed`. `load_date` là ngày UTC bắt đầu ingestion; manifest giữ cửa sổ nguồn đầy đủ. Silver chỉ đọc file được manifest committed tham chiếu.
+  - Chỉ cập nhật watermark **sau khi manifest upload thành công**. Retry dùng run ID mới; nếu S3 thành công nhưng DB commit lỗi, Silver dedup các run lặp.
   - Thêm cột `ingested_at, source_table` vào file Bronze
 - [ ] Viết `ingestion/ingest_logs.py`: nén + upload clickstream `.json.gz` lên `bronze/clickstream/dt=.../hour=.../`
 - [ ] Viết `ingestion/ingest_api.py`: gọi API tỷ giá + campaign (hoặc mock API), lưu JSON thô lên `bronze/api/<source>/dt=.../`, retry 3 lần khi API lỗi
@@ -146,7 +146,7 @@
   3. Chạy ingestion lần 2 → Bronze có phần thay đổi và tối đa 15 phút overlap; Silver dedup theo khóa nguồn
 
 ### Done khi
-- [ ] Cả 3 nguồn đều có dữ liệu trên S3; PostgreSQL Bronze dùng `load_date=/run_id=/` và `_SUCCESS` sau manifest
+- [ ] Cả 3 nguồn đều có dữ liệu trên S3; PostgreSQL Bronze dùng `load_date=/run_id=/` và manifest committed là tín hiệu sẵn sàng
 - [ ] Lần polling lặp giữ watermark và không tạo dòng mới sau khi Silver dedup, dù Bronze có thể ghi lại các dòng trong khoảng overlap 15 phút
 - [ ] Sau `simulate_new_day`, lần ingestion tiếp theo bắt đúng số orders mới (~50k, sai số nhỏ do update của bảng khác)
 - [ ] Biết rõ và ghi lại trong README hạn chế của Phase 1: **không bắt được hard DELETE** — đây là lý do có Phase 2 ở Giai đoạn 8
