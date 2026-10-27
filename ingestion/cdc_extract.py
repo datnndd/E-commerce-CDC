@@ -162,7 +162,7 @@ def extract_table(settings, s3, bucket, table_name, run_id=None):
                     f"{table_name}_{batch_stamp(lower) if lower else 'snapshot'}_"
                     f"{batch_stamp(max_updated_at)}_{uuid4().hex[:8]}"
                 )
-                day = max_updated_at.astimezone(timezone.utc).strftime("%Y-%m-%d")
+                day = started_at.strftime("%Y-%m-%d")
                 prefix = f"bronze/postgres_oltp/{table_name}/dt={day}/batch_id={batch_id}/"
                 file_name = "part-0000.parquet"
                 with path.open("rb") as data_file:

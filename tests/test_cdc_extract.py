@@ -83,6 +83,8 @@ class CdcExtractTest(unittest.TestCase):
         batch_keys = [key for key in self.s3.objects if f"batch_id={manifest['batch_id']}/" in key]
         self.assertEqual(len(batch_keys), 2)
         data_key = next(key for key in batch_keys if key.endswith("/part-0000.parquet"))
+        ingestion_day = datetime.fromisoformat(manifest["started_at"].replace("Z", "+00:00")).date()
+        self.assertIn(f"/dt={ingestion_day}/batch_id={manifest['batch_id']}/", data_key)
         data = self.s3.objects[data_key]
         self.assertEqual(manifest["files"][0]["size_bytes"], len(data))
         self.assertEqual(manifest["files"][0]["sha256"], hashlib.sha256(data).hexdigest())

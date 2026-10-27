@@ -49,7 +49,8 @@ Out of scope: running the simulator on the main RDS source before downstream sna
 - 2026-10-25: Use a content-addressed file for the maximum `updated_at` group. This reconciles the plan's timestamp-tie warning with its zero-new-file rerun criterion without adding another control table.
 - 2026-10-26: The owner chose manifest-committed at-least-once batches with a new ID per retry, and one boundary fingerprint in the existing watermark. The previous content-addressed object scheme and persistent attempt ledger are superseded.
 - 2026-10-26: Encode the actual lower/upper timestamp window in the batch ID. Check the saved boundary hash before Parquet writing, so an unchanged boundary is excluded from the new batch.
-- 2026-10-26: Shorten both batch-ID window labels to UTC `HHMM`; the outer `dt=` supplies the upper date, and the manifest retains exact dates and sub-minute precision.
+- 2026-10-26: Shorten both batch-ID window labels to UTC `HHMM`; the manifest retains exact dates and sub-minute precision.
+- 2026-10-27: Partition PostgreSQL Bronze by the UTC date of ingestion `started_at`. The source `updated_at` window, including its upper date, belongs to the manifest; `dt=` does not encode source time.
 
 ## Validation
 
@@ -60,6 +61,7 @@ Out of scope: running the simulator on the main RDS source before downstream sna
 - 2026-10-26 manifest smoke proof: the new extractor published a two-row dummy `products` batch from disposable local PostgreSQL to the test S3 bucket. A GET of its manifest and Parquet verified committed status, source row count, exact file size, and SHA-256. Both smoke objects were deleted afterward. This was not an RDS extraction.
 - 2026-10-26 window optimization proof: 3 focused PostgreSQL tests passed. A changed saved boundary replayed its rows; an unchanged boundary followed by a newer row produced a one-row Parquet file. A fresh full Olist snapshot again produced 9 manifests for 9 tables; the immediate rerun scanned each boundary group and created zero objects.
 - 2026-10-26 HHMM naming proof: the same 3 focused PostgreSQL tests passed with minute-only batch labels, including a cross-midnight `2359_0000` batch whose manifest retained both full UTC timestamps.
+- 2026-10-27 ingestion-date proof: 3 focused PostgreSQL tests passed. Each fake-S3 batch key's `dt=` matched the UTC date in its committed manifest's `started_at`, while source `updated_at` values remained in 2020.
 - Integration proof: EC2/RDS to the project S3 bucket remains pending.
 - Local CDC extraction against private RDS is pending a network path; the local `.env` currently names its private endpoint and local Docker PostgreSQL is stopped.
 - Repository checks: compile, `uv lock --check`, and `git diff --check`.
