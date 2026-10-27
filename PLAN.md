@@ -129,7 +129,7 @@
 
 ## Giai đoạn 2 — Ingestion & CDC Phase 1 → Bronze (Ngày 5–7)
 
-**Mục tiêu:** Dữ liệu từ 3 nguồn (DB, Logs, API) đều vào được S3 Bronze đúng chuẩn, chạy lại không bị trùng.
+**Mục tiêu:** Dữ liệu từ 3 nguồn (DB, Logs, API) vào được S3 Bronze với run/manifest có thể kiểm tra và watermark an toàn. Polling PostgreSQL cố ý đọc lại 15 phút; việc loại trùng logic thuộc Silver ở Giai đoạn 3.
 
 ### Việc cần làm
 - [x] Tạo bảng control trong Postgres nguồn: `cdc_watermark(table_name, last_updated_at, last_run_at)` (người dùng báo đã áp dụng `d79b3fd3ea12` trên RDS). Migration `6c4d9b7e2a11` bổ sung `last_boundary_hash` còn trong lịch sử nhưng không cần cho extractor overlap 15 phút.
@@ -138,17 +138,20 @@
   - Mỗi poll có dữ liệu tạo `s3://<bucket>/bronze/postgres_oltp/<table>/load_date=YYYY-MM-DD/run_id=YYYYMMDDTHHMMSSffffff/part-0000.parquet`, rồi `_manifest.json` sau cùng với `status=committed`. `load_date` là ngày UTC bắt đầu ingestion; manifest giữ cửa sổ nguồn đầy đủ. Silver chỉ đọc file được manifest committed tham chiếu.
   - Chỉ cập nhật watermark **sau khi manifest upload thành công**. Retry dùng run ID mới; nếu S3 thành công nhưng DB commit lỗi, Silver dedup các run lặp.
   - Thêm cột `ingested_at, source_table` vào file Bronze
+- [ ] Đồng bộ checkout EC2 với các commit local hiện tại (chưa push), giữ nguyên `.env` riêng trên EC2; xác nhận lại Alembic revision và IAM role trước khi chạy.
+- [ ] Chạy `--table orders` trên EC2/RDS một lần; kiểm tra trên S3 chỉ có Parquet + manifest committed trong run mới, đối chiếu `row_count`, cửa sổ nguồn, SHA-256 và `cdc_watermark`.
+- [ ] Khi single-table đạt, chạy initial snapshot cho tám bảng OLTP còn lại và đối chiếu manifest với số dòng nguồn; `orders` chạy lại sẽ là delta overlap.
 - [ ] Viết `ingestion/ingest_logs.py`: nén + upload clickstream `.json.gz` lên `bronze/clickstream/dt=.../hour=.../`
 - [ ] Viết `ingestion/ingest_api.py`: gọi API tỷ giá + campaign (hoặc mock API), lưu JSON thô lên `bronze/api/<source>/dt=.../`, retry 3 lần khi API lỗi
 - [ ] Chạy thử chu trình demo CDC hoàn chỉnh trên DB nguồn kiểm thử tách biệt, được nạp từ cùng snapshot; DB nguồn chính vẫn giữ initial snapshot đến khi đối soát Bronze/Silver/Gold đạt:
   1. Chạy ingestion lần 1 → ghi lại số file/số dòng Bronze
   2. Chạy `simulate_new_day.py` trên DB nguồn kiểm thử đó
-  3. Chạy ingestion lần 2 → Bronze có phần thay đổi và tối đa 15 phút overlap; Silver dedup theo khóa nguồn
+  3. Chạy ingestion lần 2 → Bronze có phần thay đổi và overlap từ watermark lùi 15 phút; đánh dấu phần lặp để Silver xử lý ở Giai đoạn 3
 
 ### Done khi
 - [ ] Cả 3 nguồn đều có dữ liệu trên S3; PostgreSQL Bronze dùng `load_date=/run_id=/` và manifest committed là tín hiệu sẵn sàng
-- [ ] Lần polling lặp giữ watermark và không tạo dòng mới sau khi Silver dedup, dù Bronze có thể ghi lại các dòng trong khoảng overlap 15 phút
-- [ ] Sau `simulate_new_day`, lần ingestion tiếp theo bắt đúng số orders mới (~50k, sai số nhỏ do update của bảng khác)
+- [ ] Mỗi initial snapshot PostgreSQL có `row_count` khớp nguồn, file được manifest tham chiếu và watermark đúng `max(updated_at)` sau upload thành công
+- [ ] Trên nguồn `*_1c_test`, lần polling sau `simulate_new_day --orders 100` bắt đủ 100 orders mới theo run report, cộng với các dòng overlap; đối soát theo PK để tránh đếm trùng
 - [ ] Biết rõ và ghi lại trong README hạn chế của Phase 1: **không bắt được hard DELETE** — đây là lý do có Phase 2 ở Giai đoạn 8
 
 ### Rủi ro thường gặp
@@ -176,6 +179,7 @@
 ### Done khi
 - [ ] Mỗi bảng Silver không có PK trùng (query kiểm tra `GROUP BY pk HAVING COUNT(*) > 1` ra 0 dòng)
 - [ ] **Test idempotency:** chạy lại toàn bộ job Silver 1 lần nữa với cùng dữ liệu Bronze → row count Silver không đổi
+- [ ] **Test overlap:** nạp hai run Bronze có cùng các dòng trong khoảng lùi 15 phút → Silver chỉ còn một dòng hiện hành cho mỗi PK và không tăng row count vì replay
 - [ ] **Test update:** đổi giá 1 product ở Postgres → chạy lại Giai đoạn 2 + 3 → Silver phản ánh giá mới
 - [ ] Số dòng Silver khớp với số dòng OLTP (trừ record đã vào quarantine, phải giải thích được từng dòng chênh lệch)
 

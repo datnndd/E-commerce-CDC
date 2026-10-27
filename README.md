@@ -1,6 +1,6 @@
 # E-commerce CDC Lakehouse
 
-Portfolio project in progress. The target pipeline is PostgreSQL OLTP → S3 Bronze → Databricks Delta Silver/Gold with dbt-databricks → dashboard, orchestrated by Airflow. The local environment currently runs PostgreSQL 18.6 and Airflow 3.3.2; data loading and pipeline DAGs are planned for later stages in [PLAN.md](PLAN.md).
+Portfolio project in progress. The target pipeline is PostgreSQL OLTP → S3 Bronze → Databricks Delta Silver/Gold with dbt-databricks → dashboard, orchestrated by Airflow. Docker Compose configures PostgreSQL 18.6 and Airflow 3.3.2 for local development. Olist loading, the isolated OLTP simulator, and PostgreSQL Bronze extraction are implemented; the EC2/RDS → S3 run and downstream pipeline remain to be verified or built. See [PLAN.md](PLAN.md).
 
 ## Stage 0: local setup
 
@@ -41,7 +41,7 @@ The Compose stack is for local development. Keep `.env`, cloud credentials, and 
 
 ## Project code layout
 
-`scripts/` is reserved for repository bootstrap and validation maintained by the Harness. Project data-source code belongs in `sources/`: `sources/oltp/` holds SQLAlchemy models and Alembic migrations, with Olist loading and OLTP simulation to follow; `sources/clickstream/` will hold the event generator. `ingestion/` receives source changes for Bronze, while `spark_jobs/`, `dbt_project/` and `airflow/dags/` own later transformation and orchestration stages.
+`scripts/` is reserved for repository bootstrap and validation maintained by the Harness. Project data-source code belongs in `sources/`: `sources/oltp/` holds SQLAlchemy models, Alembic migrations, Olist loading, and the isolated OLTP simulator; `sources/clickstream/` holds the event generator. `ingestion/` contains the PostgreSQL Bronze extractor and will hold the remaining source ingesters. `spark_jobs/`, `dbt_project/` and `airflow/dags/` own later transformation and orchestration stages.
 
 ## Stage 1: first OLTP table
 
@@ -55,7 +55,7 @@ uv run alembic -c sources/oltp/alembic.ini check
 
 For later changes, edit a mapped class in `models.py`, then generate a candidate migration with `uv run alembic -c sources/oltp/alembic.ini revision --autogenerate -m "describe change"`. Inspect and correct every generated migration before `upgrade head`; Alembic cannot infer every rename, data migration or business rule. Keep each reviewed revision in Git. `uv run alembic -c sources/oltp/alembic.ini check` reports whether the models and applied schema differ.
 
-The `customers` model treats `customer_id` as the primary key. `customer_unique_id` identifies a person across orders and is indexed, but is not unique in this table. The ZIP prefix is text so leading zeros survive. The deletion policy remains unresolved.
+The `customers` model treats `customer_id` as the primary key. `customer_unique_id` identifies a person across orders and is indexed, but is not unique in this table. The ZIP prefix is text so leading zeros survive. Stage 1C models customer deletion as `is_deleted/deleted_at` on the isolated simulator database so polling can observe it; the main snapshot remains unchanged.
 
 The nine Olist CSVs in `olist_dataset/` can be loaded into an **empty** migrated database with:
 
@@ -109,7 +109,7 @@ Expect at least revision `d79b3fd3ea12`, with `table_name`, `last_updated_at`, a
 
 ### Stage 2: PostgreSQL to S3 Bronze
 
-On EC2, set `S3_BUCKET` in `.env` to the project bucket name. The instance role needs `s3:PutObject` on `bronze/postgres_oltp/*`. The bucket is in `ap-southeast-1`. With `.env` pointing to the RDS source at revision `d79b3fd3ea12` or later, run from the repository root:
+On EC2, set `S3_BUCKET` in `.env` to the project bucket name. The instance role needs `s3:PutObject` on `bronze/postgres_oltp/*`. The bucket is in `ap-southeast-1`. With `.env` pointing to the RDS source at `d79b3fd3ea12` (or the boundary-hash-only `6c4d9b7e2a11`, without Stage 1C), run from the repository root:
 
 ```bash
 uv sync --frozen
@@ -119,6 +119,32 @@ uv run --frozen python -m ingestion.cdc_extract
 Use `--table orders` to check one table first. Each poll with source rows in its window writes `bronze/postgres_oltp/<table>/load_date=YYYY-MM-DD/run_id=YYYYMMDDTHHMMSSffffff/part-0000.parquet`, then `_manifest.json` as the final object. `load_date` is the UTC ingestion date; `run_id` is a UTC start timestamp with microseconds so nearby runs have separate paths. The manifest retains the exact source-time window. Silver reads only runs whose manifest has `status: committed`, and only the files listed in that manifest. The manifest records the run ID, source, load type, timestamp window, physical row count, per-file size and SHA-256, and start/finish times. The first run has `load_type: snapshot` and a null lower boundary; later runs are `delta`. Each Parquet row includes `ingested_at` and `source_table`.
 
 For each later poll, the exclusive lower bound is `last_updated_at - 15 minutes` and the inclusive upper bound is the source's current maximum `updated_at`. The first poll takes a full snapshot. This temporary overlap re-reads recent rows even when the source is unchanged; every such poll can produce a new run, so Silver must deduplicate by source key and row version/hash. The source watermark advances only after the committed manifest uploads. A failed attempt can leave an unreferenced Parquet object without a manifest; Silver ignores that run. If the manifest succeeds but the database commit fails, a retry can leave two committed runs with overlapping rows. Polling still misses physical deletes and writes backdated more than 15 minutes below the saved watermark. Orphan cleanup needs a separate retention policy and job; this extractor does not delete S3 objects.
+
+#### Next EC2/RDS check
+
+1. Bring the EC2 checkout to the same revision as the local checkout before running the extractor; a Git bundle procedure is below. Local commits are not available through `git pull` until they are transferred or pushed; keep the existing EC2 `.env` private and intact.
+2. Confirm `.env` points to the intended RDS database and project S3 bucket, with `AWS_REGION=ap-southeast-1` and no `AWS_PROFILE` value on EC2. Check `uv run --frozen alembic -c sources/oltp/alembic.ini current`; the main RDS source was last reported at `d79b3fd3ea12` and must not include the Stage 1C migration.
+3. Run `uv run --frozen python -m ingestion.cdc_extract --table orders` once. In S3, inspect `bronze/postgres_oltp/orders/load_date=<UTC date>/run_id=<run ID>/`: it should contain `part-0000.parquet` and `_manifest.json`. Confirm the manifest has `status: committed`, names that Parquet file, and records its row count and byte size. Download the Parquet file and compare its SHA-256 with the manifest. On the frozen first snapshot, `row_count` should equal `SELECT count(*) FROM orders`; `window.upper_boundary_inclusive` should equal `SELECT max(updated_at) FROM orders`. Check `SELECT table_name, last_updated_at, last_run_at FROM cdc_watermark WHERE table_name = 'orders'` after the upload.
+4. Once the single-table result is correct, run `uv run --frozen python -m ingestion.cdc_extract` for all nine OLTP tables. Check the other eight tables' first-snapshot manifest counts against their source counts. The second `orders` poll is a delta run and intentionally replays its 15-minute overlap, so compare its manifest to that window rather than the whole table. Keep the main OLTP snapshot frozen until Bronze/Silver/Gold reconciliation; use the isolated `*_1c_test` database for simulator changes.
+
+The EC2/RDS → S3 run and manifest checks above have not yet been observed. PostgreSQL extraction has passed focused tests against disposable PostgreSQL and fake S3; a previous real-S3 smoke test used an earlier Bronze layout.
+
+To transfer the local commits to the existing EC2 clone without pushing to GitHub, create a bundle from the local repository and upload it with Terminus SFTP. The bundle does not include the ignored `.env`:
+
+```powershell
+git bundle create ../ecommerce-stage2.bundle origin/main..HEAD
+```
+
+On EC2, after uploading the bundle to `~/ecommerce-stage2.bundle`, run from the repository root:
+
+```bash
+git status --short
+git bundle verify ~/ecommerce-stage2.bundle
+git fetch ~/ecommerce-stage2.bundle HEAD
+git merge --ff-only FETCH_HEAD
+```
+
+Proceed only if the EC2 checkout has no unexpected tracked changes and the bundle verifies. A failed fast-forward means the checkouts have diverged and need reconciliation before extraction. Do not replace the EC2 `.env`.
 
 For local development, set `AWS_PROFILE` in the ignored `.env` to a temporary-credential profile that boto3 can use. AWS CLI v2 can obtain temporary credentials from an existing Console session with [`aws login`](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sign-in.html); botocore versions without the CRT login provider can use the documented `credential_process` profile backed by `aws configure export-credentials`. Leave `AWS_PROFILE` unset on EC2 so boto3 uses the instance role. Keep the test bucket name and AWS login cache outside Git. A private RDS endpoint still requires network access from the local machine; the S3 profile alone does not provide it.
 
