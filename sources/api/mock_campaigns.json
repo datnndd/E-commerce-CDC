@@ -1,0 +1,8 @@
+{
+  "synthetic": true,
+  "campaigns": [
+    {"campaign_id": "organic_direct", "utm_source": "direct", "discount_pct": 0},
+    {"campaign_id": "search_offer", "utm_source": "search", "discount_pct": 5},
+    {"campaign_id": "social_offer", "utm_source": "social", "discount_pct": 10}
+  ]
+}

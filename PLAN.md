@@ -133,16 +133,16 @@
 
 ### Việc cần làm
 - [x] Tạo bảng control trong Postgres nguồn: `cdc_watermark(table_name, last_updated_at, last_run_at)` (người dùng báo đã áp dụng `d79b3fd3ea12` trên RDS). Migration `6c4d9b7e2a11` bổ sung `last_boundary_hash` còn trong lịch sử nhưng không cần cho extractor overlap 15 phút.
-- [x] Viết `ingestion/cdc_extract.py` (Phase 1 — timestamp CDC; đã kiểm thử với PostgreSQL tạm và S3 giả lập, chưa chạy EC2/RDS → S3 thật):
+- [x] Viết `ingestion/cdc_extract.py` (Phase 1 — timestamp CDC; đã kiểm thử với PostgreSQL tạm và S3 giả lập; người dùng báo đã upload `orders` từ EC2/RDS lên S3, chưa đối soát độc lập):
   - Lần đầu snapshot toàn bảng. Những lần sau lấy `updated_at > last_watermark - 15 phút` và `updated_at <= max(updated_at)`; đây là overlap tạm thời, có dòng lặp giữa các run.
   - Mỗi poll có dữ liệu tạo `s3://<bucket>/bronze/postgres_oltp/<table>/load_date=YYYY-MM-DD/run_id=YYYYMMDDTHHMMSSffffff/part-0000.parquet` (tách tiếp `part-0001.parquet`... mỗi 500,000 dòng), rồi `_manifest.json` sau cùng với `status=committed`. `load_date` là ngày UTC bắt đầu ingestion; manifest giữ cửa sổ nguồn đầy đủ. Silver chỉ đọc file được manifest committed tham chiếu.
   - Chỉ cập nhật watermark **sau khi manifest upload thành công**. Retry dùng run ID mới; nếu S3 thành công nhưng DB commit lỗi, Silver dedup các run lặp.
   - Thêm cột `ingested_at, source_table` vào file Bronze
-- [ ] Đồng bộ checkout EC2 với các commit local hiện tại (chưa push), giữ nguyên `.env` riêng trên EC2; xác nhận lại Alembic revision và IAM role trước khi chạy.
-- [ ] Chạy `--table orders` trên EC2/RDS một lần; kiểm tra trên S3 chỉ có Parquet + manifest committed trong run mới, đối chiếu `row_count`, cửa sổ nguồn, SHA-256 và `cdc_watermark`.
+- [ ] Đối chiếu revision checkout EC2 với repo hiện tại, giữ nguyên `.env` riêng trên EC2; xác nhận Alembic revision và IAM role.
+- [ ] Người dùng báo đã chạy `--table orders` trên EC2/RDS; còn cần đối soát độc lập Parquet + manifest committed, `row_count`, cửa sổ nguồn, SHA-256 và `cdc_watermark`.
 - [ ] Khi single-table đạt, chạy initial snapshot cho tám bảng OLTP còn lại và đối chiếu manifest với số dòng nguồn; `orders` chạy lại sẽ là delta overlap.
-- [ ] Viết `ingestion/ingest_logs.py`: nén + upload clickstream `.json.gz` lên `bronze/clickstream/dt=.../hour=.../`
-- [ ] Viết `ingestion/ingest_api.py`: gọi API tỷ giá + campaign (hoặc mock API), lưu JSON thô lên `bronze/api/<source>/dt=.../`, retry 3 lần khi API lỗi
+- [x] Viết `ingestion/ingest_logs.py`: nén + upload clickstream `.json.gz` lên `bronze/clickstream/dt=.../hour=.../run_id=.../`, rồi ghi manifest committed; đã kiểm thử 80 events trên bucket test.
+- [x] Viết `ingestion/ingest_api.py`: lấy tỷ giá BRL/USD lịch sử từ Frankfurter và campaign mock qua HTTP, lưu JSON thô lên `bronze/api/<source>/dt=.../run_id=.../`, thử lại tối đa 3 lần khi lỗi tạm thời; đã kiểm thử hai nguồn trên bucket test.
 - [ ] Chạy thử chu trình demo CDC hoàn chỉnh trên DB nguồn kiểm thử tách biệt, được nạp từ cùng snapshot; DB nguồn chính vẫn giữ initial snapshot đến khi đối soát Bronze/Silver/Gold đạt:
   1. Chạy ingestion lần 1 → ghi lại số file/số dòng Bronze
   2. Chạy `simulate_new_day.py` trên DB nguồn kiểm thử đó
@@ -156,6 +156,7 @@
 
 ### Rủi ro thường gặp
 - Dữ liệu đến muộn với `updated_at` cũ hơn `last_watermark - 15 phút` vẫn bị bỏ sót; các dòng trong overlap được Silver dedup ở Giai đoạn 3.
+- Với 7 bảng Olist được gán cùng `updated_at = snapshot_at`, mỗi poll không đổi vẫn chọn và upload lại toàn bảng. Đã đo 1.352.257 dòng lặp trên local; cần xử lý trước khi chạy định kỳ.
 
 ---
 

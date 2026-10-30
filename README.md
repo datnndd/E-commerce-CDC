@@ -122,12 +122,39 @@ For each later poll, the exclusive lower bound is `last_updated_at - 15 minutes`
 
 #### Next EC2/RDS check
 
-1. Bring the EC2 checkout to the same revision as the local checkout before running the extractor; a Git bundle procedure is below. Local commits are not available through `git pull` until they are transferred or pushed; keep the existing EC2 `.env` private and intact.
+1. Bring the EC2 checkout to the same revision as the local checkout before running the extractor; a Git bundle procedure is below for commits that are not on the remote. Keep the existing EC2 `.env` private and intact.
 2. Confirm `.env` points to the intended RDS database and project S3 bucket, with `AWS_REGION=ap-southeast-1` and no `AWS_PROFILE` or AWS key values on EC2. Check `uv run --frozen alembic -c sources/oltp/alembic.ini current`; the main RDS source was last reported at `d79b3fd3ea12` and must not include the Stage 1C migration.
 3. Run `uv run --frozen python -m ingestion.cdc_extract --table orders` once. In S3, inspect `bronze/postgres_oltp/orders/load_date=<UTC date>/run_id=<run ID>/`: it should contain `part-0000.parquet` and `_manifest.json`. Confirm the manifest has `status: committed`, names that Parquet file, and records its row count and byte size. Download the Parquet file and compare its SHA-256 with the manifest. On the frozen first snapshot, `row_count` should equal `SELECT count(*) FROM orders`; `window.upper_boundary_inclusive` should equal `SELECT max(updated_at) FROM orders`. Check `SELECT table_name, last_updated_at, last_run_at FROM cdc_watermark WHERE table_name = 'orders'` after the upload.
 4. Once the single-table result is correct, run `uv run --frozen python -m ingestion.cdc_extract` for all nine OLTP tables. Check the other eight tables' first-snapshot manifest counts against their source counts. The second `orders` poll is a delta run and intentionally replays its 15-minute overlap, so compare its manifest to that window rather than the whole table. Keep the main OLTP snapshot frozen until Bronze/Silver/Gold reconciliation; use the isolated `*_1c_test` database for simulator changes.
 
-The EC2/RDS → S3 run and manifest checks above have not yet been observed. PostgreSQL extraction has passed focused tests against disposable PostgreSQL and fake S3; a previous real-S3 smoke test used an earlier Bronze layout.
+The user reports an EC2/RDS `orders` upload, but its RDS watermark and S3 manifest have not been independently reconciled. PostgreSQL extraction has passed focused tests against disposable PostgreSQL and fake S3. A local nine-table snapshot was reconciled against the test bucket. Recurring polls of the seven tables whose Olist rows all share one `snapshot_at` currently reupload those entire tables; fix that before scheduling extraction.
+
+### Stage 2: clickstream and API Bronze
+
+After generating clickstream JSONL from an isolated Stage 1C simulator report, upload that file with:
+
+```powershell
+uv run --frozen python -m ingestion.ingest_logs logs/simulator/YOUR_RUN_ID.jsonl
+```
+
+The ingester validates each JSON object, compresses the file, then uploads `events.json.gz` under `bronze/clickstream/dt=<UTC ingestion date>/hour=<UTC hour>/run_id=<UTC start timestamp>/`. It uploads `_manifest.json` last with `status=committed`, the event count, file size, and SHA-256. A repeat invocation creates another run; Silver must deduplicate by `event_id`. Clickstream events generated from an isolated simulator database may refer to orders that are not yet in the main RDS snapshot.
+
+The API ingester accepts an exchange-rate or campaign JSON endpoint. [Frankfurter](https://frankfurter.dev/) provides free historical BRL/USD rates without an API key; the URL below starts before the first Olist order so a preceding reference day is available. To serve the synthetic campaign fixture, run the HTTP server in a separate terminal:
+
+```powershell
+uv run --frozen python -m http.server 8765 --bind 127.0.0.1 --directory sources/api
+```
+
+Then ingest both responses:
+
+```powershell
+uv run --frozen python -m ingestion.ingest_api --source exchange_rate --url "https://api.frankfurter.dev/v2/rates?from=2016-09-01&to=2018-10-17&base=BRL&quotes=USD"
+uv run --frozen python -m ingestion.ingest_api --source campaign --url "http://127.0.0.1:8765/mock_campaigns.json"
+```
+
+The ingester tries transient failures three more times, stores the exact JSON response at `bronze/api/<source>/dt=<UTC ingestion date>/run_id=<UTC start timestamp>/response.json`, then writes a committed manifest with byte size and SHA-256. The campaign response is synthetic and maps the clickstream generator's `direct`, `search`, and `social` sources; do not treat its discounts as Olist facts. Historical exchange rates are daily reference data, so Silver/Gold must define how to join non-business days. Do not put API secrets in URLs; authenticated endpoints need an explicitly configured header before use. Both ingesters use the same S3 bucket and credential settings as the PostgreSQL extractor.
+
+For EC2 uploads, extend its instance role's `s3:PutObject` permission to `bronze/clickstream/*` and `bronze/api/*` as well as the existing PostgreSQL Bronze prefix. The local test bucket has been verified for one 80-event clickstream run, one 773-rate Frankfurter response, and one 3-entry synthetic campaign response; the project bucket still needs verification for these two sources.
 
 To transfer the local commits to the existing EC2 clone without pushing to GitHub, create a bundle from the local repository and upload it with Terminus SFTP. The bundle does not include the ignored `.env`:
 

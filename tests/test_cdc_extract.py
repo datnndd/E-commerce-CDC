@@ -13,12 +13,13 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import psycopg
 
-from ingestion.cdc_extract import extract_table, s3_session
+from ingestion.cdc_extract import extract_table
+from ingestion.s3 import s3_session
 
 
 class CdcCredentialsTest(unittest.TestCase):
     def test_env_file_keys_take_priority_over_profile(self):
-        with patch.dict(os.environ, {}, clear=True), patch("ingestion.cdc_extract.boto3.Session") as session:
+        with patch.dict(os.environ, {}, clear=True), patch("ingestion.s3.boto3.Session") as session:
             s3_session({
                 "AWS_ACCESS_KEY_ID": "test-id",
                 "AWS_SECRET_ACCESS_KEY": "test-secret",
@@ -34,7 +35,7 @@ class CdcCredentialsTest(unittest.TestCase):
             "AWS_SECRET_ACCESS_KEY": "environment-secret",
             "AWS_SESSION_TOKEN": "environment-token",
         }
-        with patch.dict(os.environ, environment, clear=True), patch("ingestion.cdc_extract.boto3.Session") as session:
+        with patch.dict(os.environ, environment, clear=True), patch("ingestion.s3.boto3.Session") as session:
             s3_session({"AWS_ACCESS_KEY_ID": "file-id", "AWS_SECRET_ACCESS_KEY": "file-secret"})
         session.assert_called_once_with(
             aws_access_key_id="environment-id",
@@ -43,7 +44,7 @@ class CdcCredentialsTest(unittest.TestCase):
         )
 
     def test_incomplete_keys_fail_without_falling_back_to_profile(self):
-        with patch.dict(os.environ, {}, clear=True), patch("ingestion.cdc_extract.boto3.Session") as session:
+        with patch.dict(os.environ, {}, clear=True), patch("ingestion.s3.boto3.Session") as session:
             with self.assertRaisesRegex(ValueError, "Set both AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY"):
                 s3_session({"AWS_ACCESS_KEY_ID": "test-id", "AWS_PROFILE": "login-profile"})
             with self.assertRaisesRegex(ValueError, "Set both AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY"):
@@ -56,9 +57,14 @@ class CdcCredentialsTest(unittest.TestCase):
                 s3_session({"AWS_ACCESS_KEY_ID": "file-id", "AWS_SECRET_ACCESS_KEY": "file-secret"})
 
     def test_profile_fallback(self):
-        with patch.dict(os.environ, {}, clear=True), patch("ingestion.cdc_extract.boto3.Session") as session:
+        with patch.dict(os.environ, {}, clear=True), patch("ingestion.s3.boto3.Session") as session:
             s3_session({"AWS_PROFILE": "login-profile"})
         session.assert_called_once_with(profile_name="login-profile")
+
+    def test_default_chain_for_instance_role(self):
+        with patch.dict(os.environ, {}, clear=True), patch("ingestion.s3.boto3.Session") as session:
+            s3_session({})
+        session.assert_called_once_with(profile_name=None)
 
 
 class FakeS3:

@@ -34,7 +34,8 @@ Out of scope: running the simulator on the main RDS source before downstream sna
 - Timestamp polling cannot see physical deletes or writes backdated more than 15 minutes below the watermark; Stage 1C uses soft delete and updates `updated_at`.
 - An S3 upload can succeed while a database commit fails. A retry creates another committed run; Silver must deduplicate source rows.
 - A failed upload can leave an unreferenced Parquet object without a committed manifest. A separately specified cleanup job is needed before automatic deletion; this extractor does not delete S3 objects.
-- The local checkout is ahead of `origin/main`; the EC2 checkout revision is unverified. A GitHub pull alone cannot deploy local-only commits. Keep the EC2 `.env` when synchronizing code.
+- The EC2 checkout revision is unverified. Compare it with the current repository before deployment and keep the EC2 `.env` when synchronizing code.
+- Seven Olist tables share their initial `snapshot_at` as `updated_at`. On the current local snapshot, every unchanged-source poll selects all 1,352,257 rows across those tables. Fix this amplification before scheduling recurring polls.
 
 ## Progress
 
@@ -42,11 +43,13 @@ Out of scope: running the simulator on the main RDS source before downstream sna
 - [x] Simplify the extractor to use the control table already at `d79b3fd3ea12`; the older boundary-hash migration remains in history but is no longer a prerequisite.
 - [x] Implement PostgreSQL extraction and validate against a disposable PostgreSQL database with a fake S3 client.
 - [x] Create a separate test bucket in `ap-southeast-1` and verify local SDK access with temporary Console-backed credentials; bucket name and login cache remain outside Git.
-- [ ] Synchronize the local commits to the EC2 clone without overwriting its `.env`; confirm the RDS Alembic revision and the EC2 instance role.
-- [ ] Run one `orders` initial snapshot from EC2/RDS to S3 with the current manifest-only layout; compare source count, upper watermark, Parquet SHA-256, and committed manifest.
+- [ ] Compare the EC2 checkout with this revision without overwriting its `.env`; confirm the RDS Alembic revision and the EC2 instance role.
+- [ ] The user reports an `orders` initial snapshot from EC2/RDS to S3. Independently compare source count, upper watermark, Parquet SHA-256, and committed manifest before marking it verified.
 - [ ] Run the other eight initial OLTP snapshots and compare each source count with its committed manifest; account for the repeated `orders` overlap separately.
 - [ ] Validate the second polling run on an isolated `*_1c_test` source after `simulate_new_day --orders 100`; keep the main RDS snapshot frozen.
-- [ ] Implement clickstream and API ingestion.
+- [x] Implement clickstream JSONL compression and manifest-committed upload; prove one 80-event run on the local S3 test bucket.
+- [x] Implement API JSON ingestion with three retries; choose free Frankfurter BRL/USD historical rates and a synthetic campaign HTTP fixture. Prove both on the local S3 test bucket.
+- [ ] Deploy and verify clickstream/API runs against the intended project bucket and source context.
 - [ ] Verify the full Stage 2 acceptance criteria.
 
 ## Decisions
@@ -58,10 +61,12 @@ Out of scope: running the simulator on the main RDS source before downstream sna
 - 2026-10-27: Partition PostgreSQL Bronze by the UTC date of ingestion `started_at`. The source `updated_at` window, including its upper date, belongs to the manifest; `dt=` does not encode source time.
 - 2026-10-27: Replace batch IDs and boundary hashing with `load_date=/run_id=/`, a 15-minute polling overlap, and a final `_SUCCESS` marker. The owner chose to retain the existing `bronze/postgres_oltp/<table>/` source prefix. An unchanged source can produce overlap files; Silver deduplication is required.
 - 2026-10-27: Remove `_SUCCESS` at the owner's request. The committed manifest is the sole readiness signal, written after Parquet; watermark advancement follows its successful upload.
+- 2026-10-30: The owner chose a free real exchange-rate API and a mock campaign API. Use Frankfurter's historical BRL/USD JSON and serve the synthetic campaign fixture over local HTTP; preserve both raw responses in Bronze.
 
 ## Validation
 
 - 2026-10-27 manifest-only proof: 4 focused tests passed on disposable PostgreSQL 18.6. A run contains only Parquet and a committed manifest, uploaded in that order. Upload failures leave the watermark unchanged; a database-update failure after manifest upload is retried as a separate run. The 15-minute overlap and late-row boundary still pass.
+- 2026-10-30 clickstream/API proof: 5 focused ingestion tests and 6 credential tests passed. The local test bucket contains one clickstream run with 80 events and committed manifest; decompression, byte size, and SHA-256 matched. The same bucket contains a Frankfurter response with 773 historical BRL/USD rates and a synthetic campaign response with 3 entries; both committed manifests and file hashes matched. No project-bucket or EC2 execution was observed for these new ingesters.
 - 2026-10-27 previous marker layout proof: 4 focused tests passed on disposable PostgreSQL 18.6 with the `d79b3fd3ea12` control-table shape. They covered snapshot, repeated 15-minute overlap, a late row inside the overlap, upload/manifest/`_SUCCESS` failures, and retry after database-update failure. The watermark stayed unchanged on S3 failure.
 - The results below are historical proof for earlier layouts; they do not establish the current manifest-only completion rule.
 - Earlier batch-layout proof: `tests/test_cdc_extract.py` passed 3 tests on disposable PostgreSQL 18.6 for snapshot, unchanged rerun, same-timestamp addition, upload failure, manifest failure, and a committed manifest followed by database failure and retry. The latter produced overlapping committed batches as designed.
@@ -72,16 +77,16 @@ Out of scope: running the simulator on the main RDS source before downstream sna
 - 2026-10-26 window optimization proof: 3 focused PostgreSQL tests passed. A changed saved boundary replayed its rows; an unchanged boundary followed by a newer row produced a one-row Parquet file. A fresh full Olist snapshot again produced 9 manifests for 9 tables; the immediate rerun scanned each boundary group and created zero objects.
 - 2026-10-26 HHMM naming proof: the same 3 focused PostgreSQL tests passed with minute-only batch labels, including a cross-midnight `2359_0000` batch whose manifest retained both full UTC timestamps.
 - 2026-10-27 ingestion-date proof: 3 focused PostgreSQL tests passed. Each fake-S3 batch key's `dt=` matched the UTC date in its committed manifest's `started_at`, while source `updated_at` values remained in 2020.
-- Integration proof: EC2/RDS to the project S3 bucket remains pending.
-- Local CDC extraction against private RDS is pending a network path; the local `.env` currently names its private endpoint and local Docker PostgreSQL is stopped.
+- Integration proof: the user reports an EC2/RDS `orders` upload to the project S3 bucket; independent source/manifest/watermark reconciliation remains pending.
+- The current local checkout uses Docker PostgreSQL and the separate S3 test bucket. All nine local source snapshots were reconciled against committed manifests, file hashes, and watermarks; this does not establish the RDS state.
 - Repository checks: compile, `uv lock --check`, and `git diff --check`.
-- 2026-10-27 documentation check: the EC2 first-run sequence, source/S3 reconciliation, and Silver overlap criterion were aligned with the current extractor. `git bundle create origin/main..HEAD`, `list-heads`, and `verify` succeeded locally; EC2 transfer and merge remain untested.
+- 2026-10-27 documentation check: the EC2 first-run sequence, source/S3 reconciliation, and Silver overlap criterion were aligned with the current extractor. `git bundle create origin/main..HEAD`, `list-heads`, and `verify` succeeded locally; the current EC2 checkout revision remains unverified.
 
 ## Next Actions
 
-1. Use the README bundle procedure or another verified transfer to bring the EC2 checkout to the local revision; confirm `.env`, RDS `d79b3fd3ea12` or compatible revision, and S3 write access.
-2. Run `--table orders` once on the frozen RDS snapshot and inspect the actual S3 manifest, Parquet bytes, and source watermark.
-3. Run the remaining OLTP initial snapshots, then implement clickstream and API Bronze ingestion. Exercise simulator changes only in an isolated `*_1c_test` database.
+1. Verify the user-reported EC2/RDS `orders` run against its S3 manifest and source watermark; compare checkout revision and IAM access.
+2. Run the remaining eight initial RDS snapshots, then publish clickstream/API Bronze to the intended project bucket. Keep simulator changes in an isolated `*_1c_test` database.
+3. Fix the unchanged-source full-table replay of seven timestamp-tied tables before scheduling recurring CDC polls.
 4. Build Silver ingestion to deduplicate overlap and retries; verify idempotency there before claiming the project has no logical duplicates.
 
 ## Result
