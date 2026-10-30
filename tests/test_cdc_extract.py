@@ -9,8 +9,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-import psycopg
+import pyarrow as pa
 import pyarrow.parquet as pq
+import psycopg
 
 from ingestion.cdc_extract import extract_table, s3_session
 
@@ -61,13 +62,16 @@ class CdcCredentialsTest(unittest.TestCase):
 
 
 class FakeS3:
-    def __init__(self):
+    def __init__(self, on_upload=None):
         self.objects = {}
         self.fail_upload = False
         self.fail_manifest = False
         self.events = []
+        self.on_upload = on_upload
 
     def upload_file(self, filename, bucket, key):
+        if self.on_upload is not None:
+            self.on_upload(key)
         if self.fail_upload:
             raise RuntimeError("injected upload failure")
         self.objects[key] = Path(filename).read_bytes()
@@ -119,26 +123,34 @@ class CdcExtractTest(unittest.TestCase):
     def manifests(self):
         return [json.loads(data) for key, data in self.s3.objects.items() if key.endswith("/_manifest.json")]
 
-    def assert_batch(self, manifest, expected_count):
+    def assert_batch(self, manifest, expected_count, expected_files=1):
         self.assertEqual(manifest["status"], "committed")
         self.assertEqual(manifest["source_system"], "postgres_oltp")
         self.assertEqual(manifest["dataset"], "products")
         self.assertEqual(manifest["row_count"], expected_count)
-        self.assertEqual(len(manifest["files"]), 1)
+        self.assertEqual(len(manifest["files"]), expected_files)
         self.assertNotIn("batch_id", manifest)
         self.assertRegex(manifest["run_id"], r"^\d{8}T\d{12}$")
         ingestion_day = datetime.fromisoformat(manifest["started_at"].replace("Z", "+00:00")).date()
         prefix = f"bronze/postgres_oltp/products/load_date={ingestion_day}/run_id={manifest['run_id']}/"
+        expected_names = {f"part-{index:04d}.parquet" for index in range(expected_files)} | {"_manifest.json"}
         self.assertEqual(
             {key.removeprefix(prefix) for key in self.s3.objects if key.startswith(prefix)},
-            {"part-0000.parquet", "_manifest.json"},
+            expected_names,
         )
-        data_key = prefix + "part-0000.parquet"
-        data = self.s3.objects[data_key]
-        self.assertEqual(manifest["files"][0]["size_bytes"], len(data))
-        self.assertEqual(manifest["files"][0]["sha256"], hashlib.sha256(data).hexdigest())
-        self.assertEqual(pq.read_table(io.BytesIO(data)).num_rows, expected_count)
-        return pq.read_table(io.BytesIO(data))
+        tables = []
+        for index, file_info in enumerate(manifest["files"]):
+            self.assertEqual(file_info["name"], f"part-{index:04d}.parquet")
+            data_key = prefix + file_info["name"]
+            data = self.s3.objects[data_key]
+            self.assertEqual(file_info["size_bytes"], len(data))
+            self.assertEqual(file_info["sha256"], hashlib.sha256(data).hexdigest())
+            table = pq.read_table(io.BytesIO(data))
+            self.assertEqual(table.num_rows, file_info["row_count"])
+            tables.append(table)
+        combined = pa.concat_tables(tables)
+        self.assertEqual(combined.num_rows, expected_count)
+        return combined
 
     def test_snapshot_replay_and_same_timestamp(self):
         extract_table(self.settings, self.s3, "test-bucket", "products")
@@ -183,6 +195,41 @@ class CdcExtractTest(unittest.TestCase):
         latest = self.manifests()[4]
         self.assertEqual(latest["window"]["lower_boundary_exclusive"], "2020-01-01T23:45:00Z")
         self.assert_batch(latest, 3)
+
+    def test_splits_parquet_files_at_max_file_rows_and_releases_db_lock_before_upload(self):
+        with psycopg.connect(
+            host="127.0.0.1", port=self.settings["POSTGRES_PORT"], dbname="cdc_test",
+            user="cdc_test", password="cdc_test_password",
+        ) as connection:
+            connection.execute(
+                "INSERT INTO products VALUES (%s, %s), (%s, %s), (%s, %s)",
+                (
+                    "p3", datetime(2020, 1, 3, tzinfo=timezone.utc),
+                    "p4", datetime(2020, 1, 4, tzinfo=timezone.utc),
+                    "p5", datetime(2020, 1, 5, tzinfo=timezone.utc),
+                ),
+            )
+
+        lock_checks = []
+
+        def check_watermark_unlocked(_key):
+            with psycopg.connect(
+                host="127.0.0.1", port=self.settings["POSTGRES_PORT"], dbname="cdc_test",
+                user="cdc_test", password="cdc_test_password",
+            ) as check_conn:
+                row = check_conn.execute(
+                    "SELECT last_updated_at FROM cdc_watermark WHERE table_name = 'products' FOR UPDATE NOWAIT"
+                ).fetchone()
+                lock_checks.append(row[0])
+
+        self.s3.on_upload = check_watermark_unlocked
+        extract_table(self.settings, self.s3, "test-bucket", "products", max_file_rows=2)
+        self.assertEqual(lock_checks, [None, None, None])
+        manifest = self.manifests()[0]
+        self.assertEqual([item["row_count"] for item in manifest["files"]], [2, 2, 1])
+        table = self.assert_batch(manifest, 5, expected_files=3)
+        self.assertEqual(table["product_id"].to_pylist(), ["p1", "p2", "p3", "p4", "p5"])
+        self.assertEqual(self.watermark(), datetime(2020, 1, 5, tzinfo=timezone.utc))
 
     def test_failed_upload_and_manifest_leave_watermark_unchanged(self):
         extract_table(self.settings, self.s3, "test-bucket", "products")
