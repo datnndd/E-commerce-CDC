@@ -7,11 +7,57 @@ import os
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 import psycopg
 import pyarrow.parquet as pq
 
-from ingestion.cdc_extract import extract_table
+from ingestion.cdc_extract import extract_table, s3_session
+
+
+class CdcCredentialsTest(unittest.TestCase):
+    def test_env_file_keys_take_priority_over_profile(self):
+        with patch.dict(os.environ, {}, clear=True), patch("ingestion.cdc_extract.boto3.Session") as session:
+            s3_session({
+                "AWS_ACCESS_KEY_ID": "test-id",
+                "AWS_SECRET_ACCESS_KEY": "test-secret",
+                "AWS_PROFILE": "login-profile",
+            })
+        session.assert_called_once_with(
+            aws_access_key_id="test-id", aws_secret_access_key="test-secret", aws_session_token=None,
+        )
+
+    def test_environment_key_pair_and_token_take_priority_over_env_file(self):
+        environment = {
+            "AWS_ACCESS_KEY_ID": "environment-id",
+            "AWS_SECRET_ACCESS_KEY": "environment-secret",
+            "AWS_SESSION_TOKEN": "environment-token",
+        }
+        with patch.dict(os.environ, environment, clear=True), patch("ingestion.cdc_extract.boto3.Session") as session:
+            s3_session({"AWS_ACCESS_KEY_ID": "file-id", "AWS_SECRET_ACCESS_KEY": "file-secret"})
+        session.assert_called_once_with(
+            aws_access_key_id="environment-id",
+            aws_secret_access_key="environment-secret",
+            aws_session_token="environment-token",
+        )
+
+    def test_incomplete_keys_fail_without_falling_back_to_profile(self):
+        with patch.dict(os.environ, {}, clear=True), patch("ingestion.cdc_extract.boto3.Session") as session:
+            with self.assertRaisesRegex(ValueError, "Set both AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY"):
+                s3_session({"AWS_ACCESS_KEY_ID": "test-id", "AWS_PROFILE": "login-profile"})
+            with self.assertRaisesRegex(ValueError, "Set both AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY"):
+                s3_session({"AWS_ACCESS_KEY_ID": "", "AWS_SECRET_ACCESS_KEY": "", "AWS_PROFILE": "login-profile"})
+        session.assert_not_called()
+
+    def test_partial_process_keys_do_not_mix_with_file_keys(self):
+        with patch.dict(os.environ, {"AWS_ACCESS_KEY_ID": "environment-id"}, clear=True):
+            with self.assertRaisesRegex(ValueError, "Set both AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY"):
+                s3_session({"AWS_ACCESS_KEY_ID": "file-id", "AWS_SECRET_ACCESS_KEY": "file-secret"})
+
+    def test_profile_fallback(self):
+        with patch.dict(os.environ, {}, clear=True), patch("ingestion.cdc_extract.boto3.Session") as session:
+            s3_session({"AWS_PROFILE": "login-profile"})
+        session.assert_called_once_with(profile_name="login-profile")
 
 
 class FakeS3:
