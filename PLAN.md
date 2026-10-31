@@ -143,13 +143,14 @@
 - [ ] Khi single-table đạt, chạy initial snapshot cho tám bảng OLTP còn lại và đối chiếu manifest với số dòng nguồn; `orders` chạy lại sẽ là delta overlap.
 - [x] Viết `ingestion/ingest_logs.py`: nén + upload clickstream `.json.gz` lên `bronze/clickstream/dt=.../hour=.../run_id=.../`, rồi ghi manifest committed; đã kiểm thử 80 events trên bucket test.
 - [x] Viết `ingestion/ingest_api.py`: lấy tỷ giá BRL/USD lịch sử từ Frankfurter và campaign mock qua HTTP, lưu JSON thô lên `bronze/api/<source>/dt=.../run_id=.../`, thử lại tối đa 3 lần khi lỗi tạm thời; đã kiểm thử hai nguồn trên bucket test.
+- [x] Sinh 80 clickstream events từ 20 orders delivered trong snapshot RDS đã committed trên S3, không sửa DB; upload lên bucket dự án. Hai API cũng đã lên bucket dự án (777 tỷ giá, 3 campaign mock). Đã đọc lại cả ba manifest và đối chiếu SHA-256/kích thước; 20 `purchase` khớp `order_id`, `customer_id`, `product_id` và thời điểm mua trong snapshot.
 - [ ] Chạy thử chu trình demo CDC hoàn chỉnh trên DB nguồn kiểm thử tách biệt, được nạp từ cùng snapshot; DB nguồn chính vẫn giữ initial snapshot đến khi đối soát Bronze/Silver/Gold đạt:
   1. Chạy ingestion lần 1 → ghi lại số file/số dòng Bronze
   2. Chạy `simulate_new_day.py` trên DB nguồn kiểm thử đó
   3. Chạy ingestion lần 2 → Bronze có phần thay đổi và overlap từ watermark lùi 15 phút; đánh dấu phần lặp để Silver xử lý ở Giai đoạn 3
 
 ### Done khi
-- [ ] Cả 3 nguồn đều có dữ liệu trên S3; PostgreSQL Bronze dùng `load_date=/run_id=/` và manifest committed là tín hiệu sẵn sàng
+- [x] Cả 3 nguồn đều có dữ liệu với manifest committed trên bucket dự án; PostgreSQL Bronze dùng `load_date=/run_id=/`.
 - [ ] Mỗi initial snapshot PostgreSQL có `row_count` khớp nguồn, file được manifest tham chiếu và watermark đúng `max(updated_at)` sau upload thành công
 - [ ] Trên nguồn `*_1c_test`, lần polling sau `simulate_new_day --orders 100` bắt đủ 100 orders mới theo run report, cộng với các dòng overlap; đối soát theo PK để tránh đếm trùng
 - [ ] Biết rõ và ghi lại trong README hạn chế của Phase 1: **không bắt được hard DELETE** — đây là lý do có Phase 2 ở Giai đoạn 8

@@ -44,12 +44,12 @@ Out of scope: running the simulator on the main RDS source before downstream sna
 - [x] Implement PostgreSQL extraction and validate against a disposable PostgreSQL database with a fake S3 client.
 - [x] Create a separate test bucket in `ap-southeast-1` and verify local SDK access with temporary Console-backed credentials; bucket name and login cache remain outside Git.
 - [ ] Compare the EC2 checkout with this revision without overwriting its `.env`; confirm the RDS Alembic revision and the EC2 instance role.
-- [ ] The user reports an `orders` initial snapshot from EC2/RDS to S3. Independently compare source count, upper watermark, Parquet SHA-256, and committed manifest before marking it verified.
-- [ ] Run the other eight initial OLTP snapshots and compare each source count with its committed manifest; account for the repeated `orders` overlap separately.
+- [ ] The user reports all nine initial snapshots from EC2/RDS to S3. The project bucket has committed snapshots for all nine tables; compare each source count and upper watermark with its manifest before marking RDS reconciliation verified. The `orders` snapshot has 99,441 rows and its Parquet SHA-256 matches the manifest; its later one-row run is a delta.
+- [ ] Compare the remaining eight RDS source counts and watermarks with committed snapshot manifests. The user reports the unchanged-source polling issue fixed, but the current local extractor still has the 15-minute full-boundary replay; reconcile the EC2 code with this checkout before scheduling it.
 - [ ] Validate the second polling run on an isolated `*_1c_test` source after `simulate_new_day --orders 100`; keep the main RDS snapshot frozen.
 - [x] Implement clickstream JSONL compression and manifest-committed upload; prove one 80-event run on the local S3 test bucket.
 - [x] Implement API JSON ingestion with three retries; choose free Frankfurter BRL/USD historical rates and a synthetic campaign HTTP fixture. Prove both on the local S3 test bucket.
-- [ ] Deploy and verify clickstream/API runs against the intended project bucket and source context.
+- [x] Deploy and verify clickstream/API runs against the project bucket. The user chose clickstream from existing RDS orders; the generator reads their committed Bronze snapshot without changing the database.
 - [ ] Verify the full Stage 2 acceptance criteria.
 
 ## Decisions
@@ -62,11 +62,13 @@ Out of scope: running the simulator on the main RDS source before downstream sna
 - 2026-10-27: Replace batch IDs and boundary hashing with `load_date=/run_id=/`, a 15-minute polling overlap, and a final `_SUCCESS` marker. The owner chose to retain the existing `bronze/postgres_oltp/<table>/` source prefix. An unchanged source can produce overlap files; Silver deduplication is required.
 - 2026-10-27: Remove `_SUCCESS` at the owner's request. The committed manifest is the sole readiness signal, written after Parquet; watermark advancement follows its successful upload.
 - 2026-10-30: The owner chose a free real exchange-rate API and a mock campaign API. Use Frankfurter's historical BRL/USD JSON and serve the synthetic campaign fixture over local HTTP; preserve both raw responses in Bronze.
+- 2026-10-31: The owner chose to derive project clickstream from orders already present in the RDS snapshot. Use the committed `orders` and `order_items` Bronze snapshot as the read-only source; keep isolated simulator order IDs out of the project clickstream run.
 
 ## Validation
 
 - 2026-10-27 manifest-only proof: 4 focused tests passed on disposable PostgreSQL 18.6. A run contains only Parquet and a committed manifest, uploaded in that order. Upload failures leave the watermark unchanged; a database-update failure after manifest upload is retried as a separate run. The 15-minute overlap and late-row boundary still pass.
 - 2026-10-30 clickstream/API proof: 5 focused ingestion tests and 6 credential tests passed. The local test bucket contains one clickstream run with 80 events and committed manifest; decompression, byte size, and SHA-256 matched. The same bucket contains a Frankfurter response with 773 historical BRL/USD rates and a synthetic campaign response with 3 entries; both committed manifests and file hashes matched. No project-bucket or EC2 execution was observed for these new ingesters.
+- 2026-10-31 project-bucket proof: API manifests `20261031T155421634605` and `20261031T155425440256` are committed, with 777 historical rates and 3 mock campaigns. Clickstream manifest `20261031T155746196601` is committed for 80 events from 20 distinct RDS snapshot orders. S3 object sizes and SHA-256 hashes matched all three manifests. Each purchase matched its snapshot order/customer, an order-item product, and the original purchase timestamp. Six focused clickstream/API tests passed, including repeatable event IDs.
 - 2026-10-27 previous marker layout proof: 4 focused tests passed on disposable PostgreSQL 18.6 with the `d79b3fd3ea12` control-table shape. They covered snapshot, repeated 15-minute overlap, a late row inside the overlap, upload/manifest/`_SUCCESS` failures, and retry after database-update failure. The watermark stayed unchanged on S3 failure.
 - The results below are historical proof for earlier layouts; they do not establish the current manifest-only completion rule.
 - Earlier batch-layout proof: `tests/test_cdc_extract.py` passed 3 tests on disposable PostgreSQL 18.6 for snapshot, unchanged rerun, same-timestamp addition, upload failure, manifest failure, and a committed manifest followed by database failure and retry. The latter produced overlapping committed batches as designed.
@@ -85,9 +87,8 @@ Out of scope: running the simulator on the main RDS source before downstream sna
 ## Next Actions
 
 1. Verify the user-reported EC2/RDS `orders` run against its S3 manifest and source watermark; compare checkout revision and IAM access.
-2. Run the remaining eight initial RDS snapshots, then publish clickstream/API Bronze to the intended project bucket. Keep simulator changes in an isolated `*_1c_test` database.
-3. Fix the unchanged-source full-table replay of seven timestamp-tied tables before scheduling recurring CDC polls.
-4. Build Silver ingestion to deduplicate overlap and retries; verify idempotency there before claiming the project has no logical duplicates.
+2. The user reports all nine RDS snapshots and the unchanged-source polling fix complete. Compare the EC2 checkout and source watermarks with committed Bronze manifests, then update repository evidence for that work.
+3. Build Silver ingestion to deduplicate overlap and retries; verify idempotency there before claiming the project has no logical duplicates.
 
 ## Result
 

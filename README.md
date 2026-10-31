@@ -131,13 +131,15 @@ The user reports an EC2/RDS `orders` upload, but its RDS watermark and S3 manife
 
 ### Stage 2: clickstream and API Bronze
 
-After generating clickstream JSONL from an isolated Stage 1C simulator report, upload that file with:
+For the main project bucket, generate demo clickstream from the committed RDS `orders` and `order_items` snapshots already in S3 Bronze. The generator verifies each Parquet file against its manifest, samples delivered orders across the purchase-date range, and uses their real customer, product, order, and purchase-time values. It does not modify RDS. Create a new output file, then upload it to the project bucket:
 
 ```powershell
-uv run --frozen python -m ingestion.ingest_logs logs/simulator/YOUR_RUN_ID.jsonl
+uv run --frozen python -m sources.clickstream.generate_from_bronze --bucket ecommerce-cdc-413612133697-ap-southeast-1 --output logs/clickstream/rds_snapshot_demo.jsonl --count 20
+$env:S3_BUCKET = "ecommerce-cdc-413612133697-ap-southeast-1"
+uv run --frozen python -m ingestion.ingest_logs logs/clickstream/rds_snapshot_demo.jsonl
 ```
 
-The ingester validates each JSON object, compresses the file, then uploads `events.json.gz` under `bronze/clickstream/dt=<UTC ingestion date>/hour=<UTC hour>/run_id=<UTC start timestamp>/`. It uploads `_manifest.json` last with `status=committed`, the event count, file size, and SHA-256. A repeat invocation creates another run; Silver must deduplicate by `event_id`. Clickstream events generated from an isolated simulator database may refer to orders that are not yet in the main RDS snapshot.
+The ingester validates each JSON object, compresses the file, then uploads `events.json.gz` under `bronze/clickstream/dt=<UTC ingestion date>/hour=<UTC hour>/run_id=<UTC start timestamp>/`. It uploads `_manifest.json` last with `status=committed`, the event count, file size, and SHA-256. A repeat invocation creates another run; Silver must deduplicate by `event_id`. The generator gives the same source order and event type a stable `event_id`. Clickstream from an isolated Stage 1C simulator remains separate because those order IDs may not exist in the main RDS snapshot.
 
 The API ingester accepts an exchange-rate or campaign JSON endpoint. [Frankfurter](https://frankfurter.dev/) provides free historical BRL/USD rates without an API key; the URL below starts before the first Olist order so a preceding reference day is available. To serve the synthetic campaign fixture, run the HTTP server in a separate terminal:
 
@@ -154,7 +156,7 @@ uv run --frozen python -m ingestion.ingest_api --source campaign --url "http://1
 
 The ingester tries transient failures three more times, stores the exact JSON response at `bronze/api/<source>/dt=<UTC ingestion date>/run_id=<UTC start timestamp>/response.json`, then writes a committed manifest with byte size and SHA-256. The campaign response is synthetic and maps the clickstream generator's `direct`, `search`, and `social` sources; do not treat its discounts as Olist facts. Historical exchange rates are daily reference data, so Silver/Gold must define how to join non-business days. Do not put API secrets in URLs; authenticated endpoints need an explicitly configured header before use. Both ingesters use the same S3 bucket and credential settings as the PostgreSQL extractor.
 
-For EC2 uploads, extend its instance role's `s3:PutObject` permission to `bronze/clickstream/*` and `bronze/api/*` as well as the existing PostgreSQL Bronze prefix. The local test bucket has been verified for one 80-event clickstream run, one 773-rate Frankfurter response, and one 3-entry synthetic campaign response; the project bucket still needs verification for these two sources.
+For EC2 uploads, extend its instance role's `s3:PutObject` permission to `bronze/clickstream/*` and `bronze/api/*` as well as the existing PostgreSQL Bronze prefix. Generating clickstream from committed snapshots also needs `s3:ListBucket` and `s3:GetObject` for the `orders` and `order_items` Bronze prefixes. On 2026-10-31, the project bucket was verified with one 80-event clickstream run joining 20 RDS snapshot orders, one 777-rate Frankfurter response, and one 3-entry synthetic campaign response; each committed manifest's byte size and SHA-256 matched its S3 data object.
 
 To transfer the local commits to the existing EC2 clone without pushing to GitHub, create a bundle from the local repository and upload it with Terminus SFTP. The bundle does not include the ignored `.env`:
 
