@@ -190,48 +190,52 @@
 
 ## Giai đoạn 4 — dbt Core: Staging, Snapshot SCD2, Facts/Dims (Ngày 11–14)
 
-**Mục tiêu:** Có star schema Gold đúng chuẩn data modeling, chạy incremental, lưu được lịch sử thay đổi của customer/product.
+**Mục tiêu:** Có nhóm star schema Gold với grain rõ cho commerce, behavior và reference; lưu các phiên bản customer/product quan sát được bằng SCD2. Triển khai và đối soát local trước, sau đó mới chạy trên Databricks.
 
 ### Việc cần làm
-- [ ] Khởi tạo dbt project, cấu hình profile Databricks SQL warehouse/catalog/schema và credential ngoài Git, cài `dbt_utils`
-- [ ] **Staging** (`models/staging/`, materialized = view): `stg_customers, stg_products, stg_sellers, stg_category_translation, stg_geolocation, stg_orders, stg_order_items, stg_payments, stg_reviews, stg_clickstream, stg_exchange_rates, stg_campaigns`
-  - Chỉ rename, cast, chọn cột cần thiết — **không join, không aggregate ở tầng này**
-- [ ] **Snapshots SCD Type 2** (`snapshots/`):
+- [x] Khởi tạo dbt project và profile mẫu Databricks OAuth không chứa credential; chưa chạy với warehouse thực. Chỉ thêm package khi model hoặc test thực sự cần.
+- [x] **Staging** (`models/staging/`, materialized = view): `stg_customers, stg_products, stg_sellers, stg_category_translation, stg_geolocation, stg_orders, stg_order_items, stg_payments, stg_reviews, stg_clickstream_events, stg_exchange_rates, stg_campaigns`
+  - Silver đã chuẩn hóa nên staging hiện là view chuyển tiếp, không join/aggregate; giữ cột mới của nguồn 1C khi chúng xuất hiện trong Silver.
+- [x] **Snapshots SCD Type 2** đã định nghĩa (`snapshots/`); chưa chạy trên Databricks:
   - `customers_snapshot`: strategy = timestamp, `unique_key = customer_id`, `updated_at`
   - `products_snapshot`: strategy = timestamp, `unique_key = product_id`, `updated_at` (theo dõi thay đổi giá)
-- [ ] **Intermediate** (`models/intermediate/`): `int_orders_enriched` (orders + payments đã aggregate theo order), `int_customer_orders` (lịch sử mua theo khách)
-- [ ] **Core marts** (`models/marts/core/`):
-  - Dimensions: `dim_customer` (từ snapshot SCD2), `dim_product` (từ snapshot SCD2), `dim_seller`, `dim_date`
-  - Facts: `fct_orders`, `fct_order_items` — bảng Delta, `materialized = incremental, incremental_strategy = merge, unique_key = order_id / order_item key`, chỉ quét 3 ngày gần nhất để bắt late update
-  - Chọn partition hoặc liquid clustering cho `fct_*` dựa trên kích thước dữ liệu và phép đo Databricks; tránh tạo quá nhiều partition/file nhỏ ở quy mô MVP
-  - Join fact với `dim_product` theo đúng thời điểm bán: `order_date BETWEEN dim_product.dbt_valid_from AND COALESCE(dim_product.dbt_valid_to, '9999-12-31')`
-- [ ] Viết dbt tests cho tầng này: `unique, not_null` trên mọi PK; `relationships` từ fact về dim; `accepted_values` cho `orders.status`; custom test: doanh thu không âm, `rating BETWEEN 1 AND 5`
+- [x] **Intermediate** (`models/intermediate/`): `int_orders_enriched` cộng item/payment **riêng từng bảng** về `order_id` trước khi join; `int_customer_orders` nhóm đơn đã giao theo `customer_unique_id` để phục vụ RFM.
+- [x] **Core marts** (`models/marts/core/`) đã viết và chạy SQL trên Delta local, chia theo grain và nghiệp vụ thay vì một bảng rộng:
+  - Conformed dimensions: `dim_date` (một ngày, dùng theo nhiều vai trò), `dim_customer` (một phiên bản `customer_id`, SCD2, giữ `customer_unique_id`), `dim_product` (một phiên bản `product_id`, SCD2), `dim_seller` (một seller), `dim_category` (một category), `dim_geography` (một cặp ZIP prefix/state đã chuẩn hóa), `dim_channel` (một `utm_source`). `dim_campaign` chỉ là dimension **synthetic** tùy chọn; không tự suy diễn campaign của đơn từ `utm_source`.
+  - Commerce facts: `fct_orders` (một `order_id`), `fct_order_items` (một `(order_id, order_item_id)`), `fct_payments` (một `(order_id, payment_sequential)`), `fct_reviews` (một `review_row_id`). Order revenue và item revenue lấy từ `order_items.price`, không lấy `products.current_price`; payment là dòng tiền riêng. Review gắn với đơn, không gán cho từng product/seller khi đơn có nhiều item.
+  - Behavior facts: `fct_clickstream_events` (một `event_id`) và `fct_sessions` (một `session_id`). Clickstream từ Olist là dữ liệu mô phỏng dựa trên đơn đã mua nên funnel không đại diện cho tỷ lệ chuyển đổi thật.
+  - Reference fact: `fct_exchange_rates` (một `(date, base, quote)`); tỷ giá không cộng dồn và cần quy tắc lấy ngày gần nhất trước đó khi quy đổi cuối tuần.
+  - Các fact có thay đổi dùng Delta `incremental_strategy = merge` với `unique_key` theo grain, chọn dòng nguồn bằng thời gian ingestion của Silver (kể cả cập nhật đơn cũ); `fct_sessions` nhỏ có thể rebuild toàn bộ. Chọn partition/liquid clustering sau khi đo kích thước và query thực tế.
+  - Gắn fact với phiên bản SCD2 tại thời điểm sự kiện **khi có lịch sử quan sát**; đơn Olist trước lần snapshot đầu tiên gắn với phiên bản đầu quan sát được. Không coi phiên bản này là trạng thái lịch sử thực của 2016–2018. SCD2 không tạo lại lịch sử chưa từng được ghi nhận.
+- [x] Viết dbt tests: `unique, not_null` theo grain, quan hệ fact → dimension, trạng thái đơn hợp lệ, giá item không âm, review score 1–5; test tổng item price và số dòng so với Silver/source baseline, test không fanout khi cộng payment/review. Các singular SQL tests đã chạy local; generic tests chờ `dbt build` trên Databricks.
+- [x] Đối soát SQL Gold trên Silver local: 99,441 orders, 112,650 items, 103,886 payments, 99,224 reviews, 80 click events, 777 rates; tổng `item_price_brl` = BRL 13,591,643.70 và cả 24 tháng mua hàng khớp baseline. Fixture hai phiên bản xác nhận đơn cũ giữ khóa phiên bản đầu và giá bán gốc.
 - [ ] Chạy `dbt docs generate` và xem lineage graph — chụp lại graph này cho README
 
 ### Done khi
-- [ ] `dbt run` + `dbt test` xanh toàn bộ ở lần chạy full-refresh và ở lần chạy incremental tiếp theo
-- [ ] **Test SCD2:** đổi giá 1 product + đổi city 1 customer ở Postgres → chạy lại pipeline → snapshot có thêm 1 dòng lịch sử mới, dòng cũ bị đóng `dbt_valid_to`, fact cũ vẫn trỏ về giá/city tại thời điểm mua
-- [ ] So sánh query profile trong Databricks khi có/không có filter `order_date`, ghi lại lượng dữ liệu đọc và thời gian thực thi để chứng minh cách bố trí dữ liệu đã chọn
+- [ ] `dbt build` xanh trên Databricks ở lần chạy đầu và lần chạy incremental tiếp theo; trước đó SQL Gold được đối soát trên Delta local.
+- [ ] **Test SCD2:** trên nguồn kiểm thử 1C riêng, đổi giá 1 product + đổi city 1 customer → chạy lại pipeline → snapshot có thêm phiên bản và đóng `dbt_valid_to` cũ; fact cũ giữ `item_price` và khóa phiên bản phù hợp. Snapshot RDS gốc hiện không có `current_price`/soft-delete nên không thể dùng nó để chứng minh thử nghiệm này.
+- [ ] So sánh query profile trong Databricks khi có/không có filter `purchase_date_key`, ghi lại lượng dữ liệu đọc và thời gian thực thi để quyết định có cần clustering/partition
 
 ### Rủi ro thường gặp
-- Join fact–dim_product theo giá hiện tại thay vì SCD2 → toàn bộ doanh thu lịch sử sai khi giá đổi. Đây là lỗi nghiêm trọng nhất của project, kiểm tra kỹ ở bước test SCD2.
+- Dùng `products.current_price` để tính doanh thu cũ hoặc ép mọi đơn 2016–2018 vào cửa sổ hiệu lực snapshot mới → báo cáo lịch sử sai. Dùng `order_items.price`; với thuộc tính product/customer trước lần quan sát đầu, ghi rõ giới hạn lịch sử.
+- Join trực tiếp items × payments × reviews hoặc geolocation thô theo ZIP → nhân bản dòng và tiền. Mỗi fact giữ grain riêng; geolocation phải gom về một dòng cho mỗi cặp ZIP/state trước khi join.
 
 ---
 
 ## Giai đoạn 5 — Data Marts & Business Logic (Ngày 15–16)
 
-**Mục tiêu:** Biến star schema thành đúng 3–4 bảng mà dashboard/business dùng trực tiếp, không bắt dashboard tự join phức tạp.
+**Mục tiêu:** Tạo mart theo câu hỏi kinh doanh trên các fact đúng grain, để dashboard không phải tự join phức tạp.
 
 ### Việc cần làm
-- [ ] `mart_daily_sales` (sales): doanh thu, số đơn, AOV, tỉ lệ huỷ theo ngày / category / region / payment method
-- [ ] `mart_customer_rfm` (marketing): tính Recency (ngày từ lần mua delivered cuối), Frequency (số đơn delivered), Monetary (tổng tiền delivered) → chia quintile 1–5 → gán segment `Champions, Loyal, Potential, At Risk, Churned`
-- [ ] `mart_funnel_daily` (marketing): theo ngày / device / utm_source — sessions → view → add_to_cart → begin_checkout → purchase + tỉ lệ chuyển đổi từng bước
-- [ ] `mart_product_performance` (sales): doanh thu, số lượng, tỉ lệ refund, rating TB theo product / category / seller — dùng giá SCD2 tại thời điểm bán
-- [ ] `mart_campaign_performance` (tuỳ chọn, nếu còn thời gian): join campaign API để tính doanh thu sau discount theo `utm_source`
-- [ ] Thêm dbt tests riêng cho mart: tổng doanh thu trong `mart_daily_sales` của 1 ngày phải khớp tổng từ `fct_orders` của ngày đó (viết test đối soát hoặc query kiểm tra thủ công và ghi kết quả vào README)
+- [ ] **Sales:** `mart_daily_sales` theo ngày mua/region ở cấp đơn; doanh thu theo category/seller/product lấy từ `fct_order_items` trong `mart_product_performance`. AOV và số đơn lấy ở cấp `fct_orders`. Không chia doanh thu item theo payment method khi đơn có nhiều lần/phương thức thanh toán mà chưa có quy tắc phân bổ.
+- [ ] **Customer:** `mart_customer_rfm` dùng `customer_unique_id`, chỉ tính đơn `delivered`; Recency/Frequency/Monetary và segment được kiểm tra để mỗi người mua có đúng một segment.
+- [ ] **Behavior:** `mart_funnel_daily` dùng `fct_sessions`/`fct_clickstream_events` theo ngày/device/channel, ghi rõ mọi phiên của bộ demo hiện được sinh từ đơn đã mua nên conversion không mang ý nghĩa thị trường.
+- [ ] **Reference:** áp `fct_exchange_rates` theo `date <= order_date`, lấy ngày gần nhất khi cần hiển thị USD; không cộng hoặc lấy trung bình rate như doanh thu.
+- [ ] `mart_campaign_performance` chỉ là demo synthetic sau khi có quy tắc attribution rõ và event mang `campaign_id` hoặc mapping có hiệu lực thời gian; hiện chưa dùng làm KPI thật. `refund rate` không tính vì nguồn chưa có refund event.
+- [ ] Test riêng cho từng mart: tổng doanh thu và số đơn trong `mart_daily_sales` khớp fact ở cùng grain/filter; tổng item price trong product mart khớp item fact; RFM không nhân đôi `customer_unique_id`; funnel không vượt số session.
 
 ### Done khi
-- [ ] Cả 4 mart build được bằng `dbt run --select marts`
+- [ ] Bốn mart chính build được bằng `dbt build --select marts.business`
 - [ ] Cộng doanh thu 1 ngày bất kỳ ở mart, ở fact và ở Postgres OLTP (chỉ tính đơn `delivered`) cho **ba con số khớp nhau** — đây là bước đối soát quan trọng nhất trước khi làm dashboard
 - [ ] RFM: tổng số customers trong các segment cộng lại đúng bằng tổng số customers có ít nhất 1 đơn delivered, không khách nào bị tính 2 segment
 

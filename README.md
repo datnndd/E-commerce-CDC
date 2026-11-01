@@ -1,6 +1,6 @@
 # E-commerce CDC Lakehouse
 
-Portfolio project in progress. The target pipeline is PostgreSQL OLTP → S3 Bronze → Databricks Delta Silver/Gold with dbt-databricks → dashboard, orchestrated by Airflow. Docker Compose configures PostgreSQL 18.6 and Airflow 3.3.2 for local development. Olist loading, the isolated OLTP simulator, and PostgreSQL Bronze extraction are implemented; the EC2/RDS → S3 run and downstream pipeline remain to be verified or built. See [PLAN.md](PLAN.md).
+Portfolio project in progress. The target pipeline is PostgreSQL OLTP → S3 Bronze → Databricks Delta Silver/Gold with dbt-databricks → dashboard, orchestrated by Airflow. Docker Compose configures PostgreSQL 18.6 and Airflow 3.3.2 for local development. Olist loading, the isolated OLTP simulator, Bronze extraction, local Silver, and local Gold SQL proof are implemented; Databricks materialization and end-to-end cloud reconciliation remain unverified. See [PLAN.md](PLAN.md).
 
 ## Stage 0: local setup
 
@@ -211,6 +211,29 @@ docker run --rm --mount "type=bind,source=$((Get-Location).Path),target=/workspa
 ```
 
 The verifier checks all 12 tables for missing or duplicate keys, and checks that purchase events join to their order/customer and order-item product. The exchange-rate business date stays in `date`; its Silver `updated_at` is the API ingestion time used to choose the latest fetched value for a date/currency pair. Campaigns retain `synthetic=true`. This local proof does not create Databricks catalog objects or write Silver to S3; those integration steps remain for cloud testing.
+
+### Stage 4: Gold star schema
+
+`dbt_project/` contains 12 pass-through Silver staging views, customer/product SCD2 snapshots, two intermediate models, seven conformed dimensions, seven facts split into commerce/behavior/reference, and the optional synthetic campaign dimension. Each fact keeps its source grain: orders, order items, payments, reviews, click events, sessions, or daily FX rates. Order and item revenue come from historical `order_items.price`; payment totals are separate. Purchase and event date keys use the `America/Sao_Paulo` business date so they can be reconciled with the Olist baseline. Customer RFM must group by `customer_unique_id`.
+
+Run the SQL locally against the existing `logs/local_silver/` Delta directory using Docker Linux/Java 17:
+
+```powershell
+docker run --rm --mount "type=bind,source=$((Get-Location).Path),target=/workspace" ecommerce-silver-local uv run --frozen python -m spark_jobs.verify_gold --silver-root /workspace/logs/local_silver --project-dir /workspace/dbt_project --baseline /workspace/docs/baselines/olist_20261023T032906Z_99dc95d7.json
+docker run --rm --mount "type=bind,source=$((Get-Location).Path),target=/workspace" ecommerce-silver-local uv run --frozen python -m unittest tests.test_gold_scd2_local -v
+```
+
+The local proof executed all 29 dbt model SELECTs against the 12 Silver tables, checked the six source-level fact counts, and found 20 sessions. The historical item price total was BRL 13,591,643.70; the 24 purchase months also matched the frozen Stage 1B baseline. Five singular dbt tests passed locally, and a duplicate item deliberately failed the grain check. The SCD2 fixture used two customer/product versions to check the old-order fallback and the unchanged sale price. This proof does **not** execute dbt snapshots, generic tests, or Delta incremental MERGE.
+
+When the 12 Silver tables are available in the Databricks catalog, copy `dbt_project/profiles.yml.example` to the ignored `dbt_project/profiles.yml` and set `DBT_DATABRICKS_HOST`, `DBT_DATABRICKS_HTTP_PATH`, `DBT_CATALOG`, and `DBT_SILVER_SCHEMA` in the local shell. The profile uses interactive OAuth and stores no token in Git. Then run:
+
+```powershell
+uv run --frozen dbt build --project-dir dbt_project --profiles-dir dbt_project
+uv run --frozen dbt build --project-dir dbt_project --profiles-dir dbt_project
+uv run --frozen dbt docs generate --project-dir dbt_project --profiles-dir dbt_project
+```
+
+The second build is the incremental MERGE check. Before declaring Stage 4 complete, also run the isolated Stage 1C price/address change through Silver and dbt snapshots and verify old fact keys and `dbt_valid_to`. The frozen main Silver snapshot has no `products.current_price` or customer soft-delete columns; dbt cannot invent those source fields or reconstruct product/customer attributes from 2016–2018.
 
 ## Stage 0 cloud status
 

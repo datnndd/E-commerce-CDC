@@ -1,0 +1,166 @@
+version: 2
+
+models:
+  - name: dim_date
+    columns:
+      - name: date_key
+        data_tests: [not_null, unique]
+  - name: dim_customer
+    columns:
+      - name: customer_key
+        data_tests: [not_null, unique]
+      - name: geography_key
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_geography')
+                field: geography_key
+  - name: dim_product
+    columns:
+      - name: product_key
+        data_tests: [not_null, unique]
+      - name: category_key
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_category')
+                field: category_key
+  - name: dim_seller
+    columns:
+      - name: seller_key
+        data_tests: [not_null, unique]
+      - name: geography_key
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_geography')
+                field: geography_key
+  - name: dim_category
+    columns:
+      - name: category_key
+        data_tests: [not_null, unique]
+  - name: dim_geography
+    columns:
+      - name: geography_key
+        data_tests: [not_null, unique]
+  - name: dim_channel
+    columns:
+      - name: channel_key
+        data_tests: [not_null, unique]
+  - name: dim_campaign
+    columns:
+      - name: campaign_key
+        data_tests: [not_null, unique]
+  - name: fct_orders
+    columns:
+      - name: order_id
+        data_tests: [not_null, unique]
+      - name: customer_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_customer')
+                field: customer_key
+      - name: purchase_date_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: order_status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['delivered', 'shipped', 'canceled', 'invoiced', 'processing', 'approved', 'created', 'unavailable']
+  - name: fct_order_items
+    columns:
+      - name: order_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fct_orders')
+                field: order_id
+      - name: order_item_id
+        data_tests: [not_null]
+      - name: product_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_product')
+                field: product_key
+      - name: seller_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_seller')
+                field: seller_key
+      - name: category_key
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_category')
+                field: category_key
+  - name: fct_payments
+    columns:
+      - name: order_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fct_orders')
+                field: order_id
+      - name: payment_sequential
+        data_tests: [not_null]
+  - name: fct_reviews
+    columns:
+      - name: review_row_id
+        data_tests: [not_null, unique]
+      - name: order_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('fct_orders')
+                field: order_id
+      - name: review_score
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4, 5]
+  - name: fct_clickstream_events
+    columns:
+      - name: event_id
+        data_tests: [not_null, unique]
+      - name: session_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fct_sessions')
+                field: session_id
+      - name: channel_key
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_channel')
+                field: channel_key
+  - name: fct_sessions
+    columns:
+      - name: session_id
+        data_tests: [not_null, unique]
+      - name: session_date_key
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+  - name: fct_exchange_rates
+    columns:
+      - name: date
+        data_tests: [not_null]
+      - name: rate
+        data_tests: [not_null]

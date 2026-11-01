@@ -1,0 +1,19 @@
+version: 2
+
+sources:
+  - name: silver
+    database: "{{ env_var('DBT_CATALOG') }}"
+    schema: "{{ env_var('DBT_SILVER_SCHEMA', 'silver') }}"
+    tables:
+      - name: slv_customers
+      - name: slv_geolocation
+      - name: slv_category_translation
+      - name: slv_products
+      - name: slv_sellers
+      - name: slv_orders
+      - name: slv_order_items
+      - name: slv_payments
+      - name: slv_reviews
+      - name: slv_clickstream_events
+      - name: slv_exchange_rates
+      - name: slv_campaigns

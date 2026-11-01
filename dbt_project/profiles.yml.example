@@ -1,0 +1,11 @@
+ecommerce_databricks:
+  target: dev
+  outputs:
+    dev:
+      type: databricks
+      auth_type: oauth
+      host: "{{ env_var('DBT_DATABRICKS_HOST') }}"
+      http_path: "{{ env_var('DBT_DATABRICKS_HTTP_PATH') }}"
+      database: "{{ env_var('DBT_CATALOG') }}"
+      schema: "{{ env_var('DBT_TARGET_SCHEMA', 'analytics_dev') }}"
+      threads: 2
