@@ -16,7 +16,7 @@ class IngestLogsTest(unittest.TestCase):
     def test_gzip_precedes_committed_manifest(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             source = Path(temp_dir) / "simulator.jsonl"
-            raw = b'{"event_id":"e1"}\n{"event_id":"e2"}\n'
+            raw = b'{"event_id":"e1"}\n\n{"event_id":"e2"}'
             source.write_bytes(raw)
             s3 = Mock()
             uploaded = []
@@ -26,7 +26,7 @@ class IngestLogsTest(unittest.TestCase):
 
         prefix = "bronze/clickstream/dt=2026-10-30/hour=09/run_id=20261030T091500000000/"
         self.assertEqual(uploaded[0][0], prefix + "events.json.gz")
-        self.assertEqual(gzip.decompress(uploaded[0][1]), raw)
+        self.assertEqual(gzip.decompress(uploaded[0][1]), b'{"event_id":"e1"}\n{"event_id":"e2"}\n')
         self.assertEqual(manifest["row_count"], 2)
         self.assertEqual(manifest["status"], "committed")
         self.assertEqual(manifest["files"][0]["sha256"], hashlib.sha256(uploaded[0][1]).hexdigest())

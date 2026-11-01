@@ -10,6 +10,7 @@ from pathlib import Path
 import pyarrow.parquet as pq
 
 from ingestion.s3 import s3_client_and_bucket
+from sources.clickstream.generate import DEVICES, EVENT_TYPES, UTM_SOURCES
 
 
 def snapshot_rows(s3, bucket: str, table: str, columns: list[str]) -> list[dict]:
@@ -26,12 +27,16 @@ def snapshot_rows(s3, bucket: str, table: str, columns: list[str]) -> list[dict]
         raise ValueError(f"Expected one committed {table} snapshot, found {len(manifests)}")
 
     key, manifest = manifests[0]
+    run_prefix = key.rsplit("/", 1)[0] + "/"
     rows = []
     for file in manifest["files"]:
-        data = s3.get_object(Bucket=bucket, Key=key.rsplit("/", 1)[0] + "/" + file["name"])["Body"].read()
+        data = s3.get_object(Bucket=bucket, Key=run_prefix + file["name"])["Body"].read()
         if len(data) != file["size_bytes"] or hashlib.sha256(data).hexdigest() != file["sha256"]:
             raise ValueError(f"{table}: snapshot file failed manifest integrity check")
-        rows.extend(pq.read_table(io.BytesIO(data), columns=columns).to_pylist())
+        part_table = pq.read_table(io.BytesIO(data), columns=columns)
+        if part_table.num_rows != file["row_count"]:
+            raise ValueError(f"{table}: file {file['name']} row count differs from manifest")
+        rows.extend(part_table.to_pylist())
     if len(rows) != manifest["row_count"]:
         raise ValueError(f"{table}: snapshot row count differs from manifest")
     return rows
@@ -55,7 +60,7 @@ def build_events(orders: list[dict], items: list[dict], count: int) -> list[dict
     for order in selected:
         order_id = order["order_id"]
         digest = hashlib.sha256(order_id.encode("ascii")).hexdigest()
-        for offset, event_type in enumerate(("view_product", "add_to_cart", "begin_checkout", "purchase")):
+        for offset, event_type in enumerate(EVENT_TYPES):
             event = {
                 "event_id": hashlib.sha256(f"{order_id}:{event_type}".encode("ascii")).hexdigest()[:32],
                 "event_type": event_type,
@@ -63,8 +68,8 @@ def build_events(orders: list[dict], items: list[dict], count: int) -> list[dict
                 "session_id": digest[:32],
                 "customer_id": order["customer_id"],
                 "product_id": first_product[order_id],
-                "device": ("mobile", "desktop", "tablet")[int(digest[:2], 16) % 3],
-                "utm_source": ("direct", "search", "social")[int(digest[2:4], 16) % 3],
+                "device": DEVICES[int(digest[:2], 16) % len(DEVICES)],
+                "utm_source": UTM_SOURCES[int(digest[2:4], 16) % len(UTM_SOURCES)],
             }
             if event_type == "purchase":
                 event["order_id"] = order_id

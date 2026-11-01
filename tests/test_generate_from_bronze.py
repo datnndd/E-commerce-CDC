@@ -3,6 +3,7 @@
 import unittest
 from datetime import datetime, timezone
 
+from sources.clickstream.generate import build_events as build_simulator_events
 from sources.clickstream.generate_from_bronze import build_events
 
 
@@ -27,6 +28,27 @@ class GenerateFromBronzeTest(unittest.TestCase):
         self.assertEqual(events, build_events(orders, items, 1))
         with self.assertRaisesRegex(ValueError, "Only 1 delivered orders"):
             build_events(orders, items, 2)
+
+    def test_simulator_events_are_deterministic_for_report_seed_and_order_id(self):
+        report = {
+            "seed": 42,
+            "at_utc": "2026-10-30T09:15:00+00:00",
+            "orders": [
+                {
+                    "order_id": "sim-order-1",
+                    "customer_id": "sim-customer-1",
+                    "product_ids": ["sim-product-1", "sim-product-2"],
+                    "status": "approved",
+                }
+            ],
+        }
+        first = build_simulator_events(report)
+        second = build_simulator_events(report)
+        self.assertEqual(first, second)
+        self.assertEqual([event["event_type"] for event in first],
+                         ["view_product", "add_to_cart", "begin_checkout", "purchase"])
+        self.assertEqual(first[-1]["order_id"], "sim-order-1")
+        self.assertEqual(len({event["event_id"] for event in first}), 4)
 
 
 if __name__ == "__main__":

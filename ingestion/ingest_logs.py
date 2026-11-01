@@ -23,13 +23,15 @@ def ingest_logs(source: Path, s3, bucket: str, started_at: datetime | None = Non
         row_count = 0
         with source.open("rb") as input_file, gzip.open(compressed, "wb") as output_file:
             for line_number, line in enumerate(input_file, 1):
+                if not line.strip():
+                    continue
                 try:
                     event = json.loads(line.decode("utf-8"))
                 except (UnicodeDecodeError, json.JSONDecodeError) as exc:
                     raise ValueError(f"{source.name}: invalid JSON at line {line_number}") from exc
                 if not isinstance(event, dict):
                     raise ValueError(f"{source.name}: line {line_number} must be a JSON object")
-                output_file.write(line)
+                output_file.write(line if line.endswith(b"\n") else line + b"\n")
                 row_count += 1
         if not row_count:
             raise ValueError(f"{source.name}: no clickstream events")
