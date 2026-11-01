@@ -167,23 +167,21 @@
 
 ### Việc cần làm
 - [ ] Tạo schema/catalog Silver trong Databricks và lưu các bảng Delta trên S3 qua Unity Catalog/external location đã cấu hình.
-- [ ] Viết Spark job `spark_jobs/silver_transform.py` cho 2 việc nặng nhất:
-  - Flatten clickstream JSON lồng nhau → `slv_clickstream_events`
-  - Clean + dedup `order_items` scale lớn
-- [ ] Với các bảng còn lại, viết logic Silver bằng Databricks SQL hoặc Spark trên bảng Delta:
-  - Chuẩn hoá: timestamp về UTC, `lower(trim(email))`, cast đúng type, chuẩn hoá `status`
+- [x] Viết Spark job local `spark_jobs/silver_transform.py` đọc manifest committed, chuẩn hoá clickstream JSON hiện có (các event thực tế là JSON phẳng), clean + dedup `order_items` và ghi Delta. Đã chạy trên toàn bộ 9 bảng Olist local, clickstream và API; phần chạy trong Databricks vẫn chờ thử nghiệm cloud.
+- [x] Viết logic Silver bằng Spark trên bảng Delta local cho các bảng còn lại:
+  - Chuẩn hoá: timestamp về UTC, cast đúng type, chuẩn hoá `status`; nguồn Olist hiện không có cột `email`
   - Dedup: `ROW_NUMBER() OVER (PARTITION BY pk ORDER BY updated_at DESC)` lấy bản mới nhất
   - Áp CDC bằng `MERGE INTO`: match → UPDATE, not matched → INSERT; record bị xoá ở nguồn (nếu bắt được) → soft-delete `is_deleted = true`
-  - Loại/quarantine record lỗi (`quantity <= 0`, `unit_price < 0`, `customer_id IS NULL`) vào bảng `silver_quarantine` riêng, **không âm thầm bỏ qua**
-- [ ] Xử lý late-arriving: record đến muộn nhưng `updated_at` cũ hơn bản hiện tại thì **không được ghi đè**
-- [ ] Tạo đủ 7 bảng Silver: `slv_customers, slv_products, slv_orders, slv_order_items, slv_payments, slv_reviews, slv_clickstream_events`
+  - Loại/quarantine record lỗi vào bảng `silver_quarantine` riêng, **không âm thầm bỏ qua**; Olist `order_items` dùng `price` thay cho `unit_price` và không có cột `quantity`
+- [x] Xử lý late-arriving ở local: record đến muộn nhưng `updated_at` cũ hơn bản hiện tại không ghi đè; kiểm thử bằng fixture Delta MERGE.
+- [x] Tạo đủ 12 bảng Silver (9 bảng Olist + Clickstream + 2 bảng API) trên Delta local: `slv_customers, slv_products, slv_sellers, slv_category_translation, slv_geolocation, slv_orders, slv_order_items, slv_payments, slv_reviews, slv_clickstream_events, slv_exchange_rates, slv_campaigns` (cùng bảng cách ly `silver_quarantine`). Chưa tạo trong Databricks.
 
 ### Done khi
-- [ ] Mỗi bảng Silver không có PK trùng (query kiểm tra `GROUP BY pk HAVING COUNT(*) > 1` ra 0 dòng)
-- [ ] **Test idempotency:** chạy lại toàn bộ job Silver 1 lần nữa với cùng dữ liệu Bronze → row count Silver không đổi
-- [ ] **Test overlap:** nạp hai run Bronze có cùng các dòng trong khoảng lùi 15 phút → Silver chỉ còn một dòng hiện hành cho mỗi PK và không tăng row count vì replay
+- [x] Local: cả 12 bảng Silver không có PK trùng hoặc PK null; `spark_jobs.verify_silver` đã kiểm tra trên Delta đầy đủ.
+- [x] Local: chạy lại toàn bộ job Silver với cùng dữ liệu Bronze, số dòng cả 12 bảng không đổi.
+- [x] Local fixture: hai run Bronze có dòng overlap chỉ còn một dòng hiện hành cho mỗi PK và không tăng row count vì replay.
 - [ ] **Test update:** đổi giá 1 product ở Postgres → chạy lại Giai đoạn 2 + 3 → Silver phản ánh giá mới
-- [ ] Số dòng Silver khớp với số dòng OLTP (trừ record đã vào quarantine, phải giải thích được từng dòng chênh lệch)
+- [x] Local: số dòng 9 bảng Silver khớp 9 bảng PostgreSQL local; quarantine có 0 dòng trong snapshot sạch. Kiểm thử fixture chứng minh record lỗi được cách ly có lý do.
 
 ### Rủi ro thường gặp
 - Dedup chỉ theo PK mà quên so `updated_at` → bản cũ ghi đè bản mới. Đây là lỗi phỏng vấn rất hay bị hỏi xoáy.
@@ -196,7 +194,7 @@
 
 ### Việc cần làm
 - [ ] Khởi tạo dbt project, cấu hình profile Databricks SQL warehouse/catalog/schema và credential ngoài Git, cài `dbt_utils`
-- [ ] **Staging** (`models/staging/`, materialized = view): `stg_customers, stg_products, stg_orders, stg_order_items, stg_payments, stg_reviews, stg_clickstream`
+- [ ] **Staging** (`models/staging/`, materialized = view): `stg_customers, stg_products, stg_sellers, stg_category_translation, stg_geolocation, stg_orders, stg_order_items, stg_payments, stg_reviews, stg_clickstream, stg_exchange_rates, stg_campaigns`
   - Chỉ rename, cast, chọn cột cần thiết — **không join, không aggregate ở tầng này**
 - [ ] **Snapshots SCD Type 2** (`snapshots/`):
   - `customers_snapshot`: strategy = timestamp, `unique_key = customer_id`, `updated_at`

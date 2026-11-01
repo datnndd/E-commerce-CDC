@@ -177,6 +177,33 @@ Proceed only if the EC2 checkout has no unexpected tracked changes and the bundl
 
 For local development, put `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` in the ignored `.env` to let this extractor upload without `aws login`. Add `AWS_SESSION_TOKEN` only for temporary credentials; those expire. A complete key pair takes priority over `AWS_PROFILE`. Alternatively, set `AWS_PROFILE` in `.env` to a temporary-credential profile that boto3 can use; AWS CLI v2 can obtain one with [`aws login`](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sign-in.html). The AWS CLI does not read this project's `.env`; these keys are for the Python extractor. Do not commit or share `.env`. On EC2, leave all three key variables and `AWS_PROFILE` unset so boto3 uses the instance role. A private RDS endpoint still requires network access from the local machine; S3 credentials alone do not provide it.
 
+### Stage 3: local Silver
+
+The local Spark job reads only committed Bronze manifests and the files each manifest lists. It verifies file size, SHA-256 and recorded row counts before transforming; uncommitted runs and unlisted files are ignored. It writes 12 Delta tables plus `silver_quarantine` under a local output directory. Duplicate source keys collapse to the newest `updated_at`; a later ingestion resolves equal source timestamps. Delta MERGE leaves older source versions and repeated runs from replacing current rows. Invalid keys/timestamps, missing customer IDs, negative `order_items.price`, and malformed API values go to quarantine with a reason and source run ID. The Olist model has no `email`, `quantity`, or `unit_price` columns; the corresponding generic checks in the plan apply only if those fields appear in a source schema.
+
+Windows Spark cannot run this Delta configuration with the machine's Java 24 and missing Hadoop `winutils.exe`, so the reproducible local proof uses Docker Linux with Java 17. From PowerShell in the repository root:
+
+```powershell
+docker build -f docker/silver.Dockerfile -t ecommerce-silver-local .
+docker run --rm --mount "type=bind,source=$((Get-Location).Path),target=/workspace" --env SILVER_TEST_DOCKER=1 ecommerce-silver-local uv run --frozen python -m unittest tests.test_silver_local -v
+```
+
+To make a full local Bronze input from the existing Docker PostgreSQL snapshot, start its container, then run the local materializer. It reads PostgreSQL in one read-only transaction, writes all nine Parquet snapshots and committed manifests to `logs/local_bronze/`, compresses the existing local clickstream JSONL, and fetches the two API responses into the same local tree. It does not write to PostgreSQL, S3, or EC2:
+
+```powershell
+docker compose up -d postgres
+uv run --frozen python -m ingestion.local_bronze --root logs/local_bronze --clickstream logs/clickstream/rds_snapshot_20261031.jsonl
+```
+
+The clickstream path above is a generated local file from this checkout; use another local JSONL path if yours differs. Run one dataset or omit `--dataset` for all 12:
+
+```powershell
+docker run --rm --mount "type=bind,source=$((Get-Location).Path),target=/workspace" ecommerce-silver-local uv run --frozen python -m spark_jobs.silver_transform --bronze-root /workspace/logs/local_bronze --silver-root /workspace/logs/local_silver
+docker run --rm --mount "type=bind,source=$((Get-Location).Path),target=/workspace" ecommerce-silver-local uv run --frozen python -m spark_jobs.verify_silver --silver-root /workspace/logs/local_silver
+```
+
+The verifier checks all 12 tables for missing or duplicate keys, and checks that purchase events join to their order/customer and order-item product. The exchange-rate business date stays in `date`; its Silver `updated_at` is the API ingestion time used to choose the latest fetched value for a date/currency pair. Campaigns retain `synthetic=true`. This local proof does not create Databricks catalog objects or write Silver to S3; those integration steps remain for cloud testing.
+
 ## Stage 0 cloud status
 
 AWS Console and CloudShell access in `ap-southeast-1` have been checked. The project S3 bucket has Block Public Access, ACLs disabled, and default SSE-S3 encryption. A small object was uploaded, inspected, and deleted using the AWS CLI in CloudShell. The bucket name and cloud credentials are intentionally kept out of this repository.

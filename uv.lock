@@ -463,6 +463,19 @@ wheels = [
 ]
 
 [[package]]
+name = "delta-spark"
+version = "4.3.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "importlib-metadata" },
+    { name = "pyspark" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/5f/ca/f0162629226daaf8b976aef8984fe87a8ea9650a79b3b6080f09b0ae7de4/delta_spark-4.3.1.tar.gz", hash = "sha256:58e3c803f4a83afbc85077d69bf942af821059d5f6d36782136d44b84b41ee8b", size = 45900, upload-time = "2026-07-08T01:26:26.086Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bb/c3/be03a079bcc8d4d6ef6da8ae233cd72a4204cd19b46b5fe846550773a126/delta_spark-4.3.1-py3-none-any.whl", hash = "sha256:f77602e9c2c89a519742b935a8f68d942119cf61643c3dc6e809fdf49ffe3ed2", size = 53930, upload-time = "2026-07-08T01:26:24.994Z" },
+]
+
+[[package]]
 name = "ecommerce-cdc-lakehouse"
 version = "0.1.0"
 source = { virtual = "." }
@@ -470,6 +483,7 @@ dependencies = [
     { name = "alembic" },
     { name = "boto3" },
     { name = "dbt-databricks" },
+    { name = "delta-spark" },
     { name = "faker" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pyarrow" },
@@ -484,10 +498,11 @@ requires-dist = [
     { name = "alembic", specifier = ">=1.17,<2" },
     { name = "boto3", specifier = ">=1.40,<2" },
     { name = "dbt-databricks", specifier = ">=1.10,<1.12" },
+    { name = "delta-spark", specifier = ">=4.3,<4.4" },
     { name = "faker", specifier = ">=37,<39" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2,<4" },
     { name = "pyarrow", specifier = ">=20,<27" },
-    { name = "pyspark", specifier = ">=4.0,<5" },
+    { name = "pyspark", specifier = ">=4.1,<4.2" },
     { name = "python-dotenv", specifier = ">=1,<2" },
     { name = "sqlalchemy", specifier = ">=2.0,<2.1" },
     { name = "tzdata", specifier = ">=2025" },
@@ -554,14 +569,14 @@ wheels = [
 
 [[package]]
 name = "importlib-metadata"
-version = "8.9.0"
+version = "8.7.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "zipp" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e7/72/c600ae4f68c28fc19f9c31b9403053e5dbb8cace2e6842c7b7c3e4d42fe9/importlib_metadata-8.9.0.tar.gz", hash = "sha256:58850626cef4bd2df100378b0f2aea9724a7b92f10770d547725b047078f99ee", size = 56140, upload-time = "2026-03-20T16:56:26.362Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f3/49/3b30cad09e7771a4982d9975a8cbf64f00d4a1ececb53297f1d9a7be1b10/importlib_metadata-8.7.1.tar.gz", hash = "sha256:49fef1ae6440c182052f407c8d34a68f72efc36db9ca90dc0113398f2fdde8bb", size = 57107, upload-time = "2025-12-21T10:00:19.278Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7d/f9/97f2ca8bb3ec6e4b1d64f983ebe98b9a192faddff67fac3d6303a537e670/importlib_metadata-8.9.0-py3-none-any.whl", hash = "sha256:e0f761b6ea91ced3b0844c14c9d955224d538105921f8e6754c00f6ca79fba7f", size = 27220, upload-time = "2026-03-20T16:56:25.07Z" },
+    { url = "https://files.pythonhosted.org/packages/fa/5e/f8e9a1d23b9c20a551a8a02ea3637b4642e22c2626e3a13a9a29cdea99eb/importlib_metadata-8.7.1-py3-none-any.whl", hash = "sha256:5a1f80bf1daa489495071efbb095d75a634cf28a8bc299581244063b53176151", size = 27865, upload-time = "2025-12-21T10:00:18.329Z" },
 ]
 
 [[package]]
@@ -1076,12 +1091,12 @@ wheels = [
 
 [[package]]
 name = "pyspark"
-version = "4.2.0"
+version = "4.1.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "py4j" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c3/33/c987434f5d50aa802779a004ca0fd45ee4350caab50554ad7283d5a22b50/pyspark-4.2.0.tar.gz", hash = "sha256:5ad689d53570ee1674193fd4f9bda065f0db3be9363a27d2a3406cc457b70b61", size = 450129423, upload-time = "2026-07-14T22:16:46Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/19/bf/58ee13add151469c25825b7125bbf62c3bdcec05eec4d458fcb5c5516066/pyspark-4.1.1.tar.gz", hash = "sha256:77f78984aa84fbe865c717dd37b49913b4e5c97d76ef6824f932f1aefa6621ec", size = 455359625, upload-time = "2026-01-09T09:38:38.28Z" }
 
 [[package]]
 name = "python-dateutil"

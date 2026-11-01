@@ -9,6 +9,7 @@ scripts/bin/harness.exe
 *service-account*.json
 *credentials*.json
 .venv/
+.tools/
 __pycache__/
 *.py[cod]
 .pytest_cache/

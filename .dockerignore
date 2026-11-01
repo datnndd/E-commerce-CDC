@@ -1,0 +1,7 @@
+.git
+.venv
+.tools
+logs
+olist_dataset
+__pycache__
+*.pyc
