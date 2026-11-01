@@ -188,6 +188,14 @@ docker build -f docker/silver.Dockerfile -t ecommerce-silver-local .
 docker run --rm --mount "type=bind,source=$((Get-Location).Path),target=/workspace" --env SILVER_TEST_DOCKER=1 ecommerce-silver-local uv run --frozen python -m unittest tests.test_silver_local -v
 ```
 
+To repeat the PostgreSQL → Bronze → Silver price-update proof, start the local Compose PostgreSQL and run this test with Docker available. It creates and drops a uniquely named local test database; Docker Desktop may leave ignored Delta test files under `logs/silver_e2e_*/` because Windows can deny immediate bind-mount cleanup.
+
+```powershell
+docker compose up -d postgres
+$env:SILVER_PG_E2E = "1"
+uv run --frozen python -m unittest tests.test_silver_postgres_e2e -v
+```
+
 To make a full local Bronze input from the existing Docker PostgreSQL snapshot, start its container, then run the local materializer. It reads PostgreSQL in one read-only transaction, writes all nine Parquet snapshots and committed manifests to `logs/local_bronze/`, compresses the existing local clickstream JSONL, and fetches the two API responses into the same local tree. It does not write to PostgreSQL, S3, or EC2:
 
 ```powershell

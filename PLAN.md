@@ -180,7 +180,7 @@
 - [x] Local: cả 12 bảng Silver không có PK trùng hoặc PK null; `spark_jobs.verify_silver` đã kiểm tra trên Delta đầy đủ.
 - [x] Local: chạy lại toàn bộ job Silver với cùng dữ liệu Bronze, số dòng cả 12 bảng không đổi.
 - [x] Local fixture: hai run Bronze có dòng overlap chỉ còn một dòng hiện hành cho mỗi PK và không tăng row count vì replay.
-- [ ] **Test update:** đổi giá 1 product ở Postgres → chạy lại Giai đoạn 2 + 3 → Silver phản ánh giá mới
+- [x] **Test update local:** trên PostgreSQL tạm riêng, đổi giá 1 product từ 10 thành 20 → chạy lại extractor Bronze và Silver Delta MERGE → Silver phản ánh 20; watermark và hai manifest snapshot/delta đúng. Chưa thử chu trình này trên RDS/Databricks.
 - [x] Local: số dòng 9 bảng Silver khớp 9 bảng PostgreSQL local; quarantine có 0 dòng trong snapshot sạch. Kiểm thử fixture chứng minh record lỗi được cách ly có lý do.
 
 ### Rủi ro thường gặp

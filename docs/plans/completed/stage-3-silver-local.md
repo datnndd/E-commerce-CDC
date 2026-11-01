@@ -42,6 +42,7 @@ Out of scope: EC2, RDS, Databricks catalog creation, Unity Catalog storage paths
 - [x] Implement manifest-bound Bronze reads and all 12 dataset transformations.
 - [x] Implement and test local Delta MERGE, replay, overlap, late update, soft delete, and quarantine.
 - [x] Materialize a full Bronze input from local PostgreSQL in a read-only transaction; run and verify all 12 Delta tables.
+- [x] Prove a product price update end to end through an isolated local PostgreSQL database, the CDC extractor, and Delta Silver.
 - [x] Document local execution and update `PLAN.md` with observed status.
 
 ## Decisions
@@ -52,8 +53,9 @@ Out of scope: EC2, RDS, Databricks catalog creation, Unity Catalog storage paths
 
 - Focused proof: two Docker Spark/Delta integration tests passed. They cover all 12 datasets, a second identical run, overlap, newer and older order/product updates, customer soft delete, five invalid records quarantined, uncommitted/unlisted files ignored, and bad SHA-256 rejected.
 - Full local proof: nine PostgreSQL tables materialized as Parquet snapshots with committed manifests without writing to the database; 80 clickstream events and two API responses materialized locally. All 12 Silver Delta tables were built and replayed with unchanged counts. `verify_silver` found zero duplicate/null primary keys, 20 matching purchase joins, and zero quarantine rows on this clean snapshot. OLTP Silver counts match the nine local source counts (customers 99,441; geolocation 1,000,163; category translation 71; products 32,951; sellers 3,095; orders 99,441; order items 112,650; payments 103,886; reviews 99,224).
-- Repository checks: `uv lock --check`, `git diff --check`, compile, and Windows unittest discovery passed; five disposable-PostgreSQL tests and two Docker-only Silver tests are skipped in Windows discovery. The two Silver tests passed in Docker.
+- End-to-end local proof: one disposable database produced a committed product snapshot at price 10.00, then a committed delta after a PostgreSQL update to 20.00. Silver reflected 10.00 and then 20.00; the watermark reached the new source timestamp. The disposable database was dropped. Docker Desktop retained some ignored test artifacts because Windows denied immediate bind-mount cleanup.
+- Repository checks: `uv lock --check`, `git diff --check`, compile, and Windows unittest discovery passed; five disposable-PostgreSQL tests, two Docker-only Silver tests, and the opt-in PostgreSQL/Silver end-to-end test are skipped in default Windows discovery. The two Silver tests passed in Docker, and the opt-in end-to-end test passed against local Compose PostgreSQL plus Docker.
 
 ## Result
 
-Local Stage 3 implementation and proof completed. Databricks catalog/external-location deployment and the end-to-end product-price change from PostgreSQL through Bronze to Silver remain open in the main `PLAN.md`.
+Local Stage 3 implementation and proof completed. Databricks catalog/external-location deployment and the same end-to-end path in cloud remain open in the main `PLAN.md`.
