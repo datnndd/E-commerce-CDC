@@ -24,7 +24,7 @@
 | 4 | dbt Core — Staging, Snapshot SCD2, Facts/Dims | Ngày 11–14 | Star schema Gold chạy incremental |
 | 5 | Data Marts & Business Logic | Ngày 15–16 | Daily Sales, Product, RFM, Funnel, Payment Mix, Order Experience |
 | 6 | Orchestration & Data Quality | Ngày 17–18 | Airflow DAG tự chạy, GE checks, alert khi fail |
-| 7 | Dashboard & Kiểm chứng số liệu | Ngày 19–20 | Dashboard 4 trang, số khớp với OLTP |
+| 7 | Dashboard & Kiểm chứng số liệu | Ngày 19–20 | Dashboard 5 trang theo sáu business marts và vận hành, số khớp với OLTP |
 | 8 | Nâng cấp & Đóng gói Portfolio | Ngày 21–22+ (tuỳ chọn) | Debezium/Kafka, README, demo, CV |
 
 **Trạng thái 02/11/2026:** Giai đoạn 4 và 5 đã có SQL dbt và đối soát trên Delta local. Chưa tạo các bảng Silver/Gold của pipeline trong Databricks, nên `dbt build`, snapshots SCD2 thực tế, generic tests, incremental MERGE và query profile trên cloud vẫn chờ kiểm chứng.
@@ -294,17 +294,20 @@ Local verifier đã chạy 14 singular SQL tests cho business marts, phát hiệ
 - Công cụ dashboard chưa được chọn. Trước khi bắt đầu giai đoạn này, chọn công cụ có cách kết nối được kiểm chứng với Databricks SQL hoặc với mart đã xuất bản, chi phí phù hợp và quyền chia sẻ bản demo rõ ràng.
 
 ### Việc cần làm
-- [ ] Kết nối công cụ dashboard đã chọn với các bảng mart Gold (không nối trực tiếp vào fact/dim thô)
-- [ ] **Trang 1 — Executive:** doanh thu, số đơn, AOV, tỉ lệ huỷ trong khoảng ngày có dữ liệu; đường doanh thu theo ngày và doanh thu theo category
-- [ ] **Trang 2 — Customer/RFM:** phân bố segment, bảng Top VIP, lượt mua lặp lại theo tháng mua đầu tiên (nguồn không có ngày đăng ký thật)
-- [ ] **Trang 3 — Product, Payment & Experience:** sản phẩm theo doanh thu; cơ cấu thanh toán; giao trễ và rating ở cấp đơn. Funnel mô phỏng có nhãn demo riêng; không hiển thị refund theo seller hoặc rating theo product khi nguồn chưa hỗ trợ.
-- [ ] **Trang 4 — Data Quality/Ops:** số dòng Bronze/Silver/Gold theo ngày (từ `ops_pipeline_runs`), CDC lag, số record quarantine, lần chạy DAG gần nhất
+- [ ] Kết nối công cụ dashboard đã chọn với sáu business marts Gold; trang Ops đọc `ops_pipeline_runs` từ Giai đoạn 6. Không để dashboard tự join các fact/dim thô để tính KPI.
+- [ ] **Trang 1 — Executive/Sales** (`mart_daily_sales`): doanh thu **item đã giao**, số đơn mọi status, số đơn đã giao, AOV item đã giao và tỉ lệ huỷ; đường doanh thu theo ngày, so sánh theo bang khách. Khi gộp nhiều ngày/bang, tính lại AOV = tổng `delivered_item_revenue_brl` / tổng `delivered_order_count` và tỉ lệ huỷ = tổng `canceled_order_count` / tổng `order_count`, không lấy trung bình các tỉ lệ có sẵn.
+- [ ] **Trang 2 — Product** (`mart_product_performance`): Top sản phẩm, danh mục, seller và bang seller theo doanh thu item đã giao; số item bán. Mart hiện không có ngày bán hoặc bang khách, nên đây là tổng hợp toàn kỳ: không gắn bộ lọc ngày/bang khách từ trang Executive. Tổng `order_count` theo các product/category không phải số đơn duy nhất vì một đơn có thể chứa nhiều item.
+- [ ] **Trang 3 — Customer/RFM** (`mart_customer_rfm`): phân bố số khách theo segment, tổng `monetary_brl` theo segment, bảng khách hàng giá trị cao. Hiển thị `as_of_date`; đây là một phân đoạn hiện tại theo ngày dữ liệu, không phải lịch sử segment theo tháng hay ngày đăng ký khách.
+- [ ] **Trang 4 — Journey & Experience:** cơ cấu `payment_value_brl` theo phương thức từ `mart_payment_mix_daily`; tỉ lệ giao trễ, thời gian giao và review ở cấp đơn từ `mart_order_experience_daily`. Đặt funnel từ `mart_funnel_daily` trong khu vực riêng có nhãn **clickstream mô phỏng từ đơn hàng**, không diễn giải thành tỉ lệ chuyển đổi khách thật. Payment gắn với ngày mua của order, không phải ngày trả tiền; không cộng `paid_order_count` qua payment type để suy ra số đơn duy nhất. Khi gộp cohort, tính tỉ lệ giao trễ = tổng `late_delivery_order_count` / tổng `orders_with_delivery_date`, không lấy trung bình tỉ lệ ngày.
+- [ ] **Trang 5 — Data Quality/Ops:** số dòng Bronze/Silver/Gold theo ngày, số record quarantine, lần chạy DAG gần nhất và trạng thái lỗi từ `ops_pipeline_runs`/kết quả Giai đoạn 6. Chỉ vẽ CDC lag sau khi Giai đoạn 6 ghi nhận được mốc nguồn và mốc xử lý để tính chỉ số này.
+- [ ] Cấu hình bộ lọc theo grain từng trang: ngày mua/bang khách cho Executive; category/seller cho Product; segment cho Customer; ngày mua cho Payment/Experience và ngày session riêng cho Funnel; ngày chạy cho Ops. Mặc định hiển thị khoảng ngày thực sự có dữ liệu Olist, tránh khoảng ngày hiện tại rỗng. Chỉ dùng bộ lọc chung khi các dataset có cùng ý nghĩa trường lọc.
+- [ ] Nếu cần biểu đồ **doanh thu category theo ngày** hoặc **khách mua lại theo tháng mua đầu tiên**, thiết kế và đối soát mart theo grain tương ứng trước khi đưa lên dashboard; sáu mart hiện tại chưa hỗ trợ hai biểu đồ đó. Không hiển thị refund theo seller hoặc rating theo product khi nguồn chưa hỗ trợ.
 - [ ] Kiểm chứng: chọn ngẫu nhiên 5 con số trên dashboard, truy ngược về mart → fact → OLTP bằng SQL, ghi lại quá trình đối soát này vào README/docs
 
 ### Done khi
 - [ ] Người ngoài (bạn bè/mentor) mở dashboard tự hiểu được trang 1 mà không cần bạn giải thích
 - [ ] 5/5 con số kiểm chứng khớp giữa dashboard và OLTP
-- [ ] Dashboard có bộ lọc ngày/category hoạt động đúng, không có chart nào trống dữ liệu
+- [ ] Bộ lọc đúng theo grain của từng trang, không áp bộ lọc ngày lên Product/RFM hiện tại; không có chart nào trống vì mặc định chọn ngày ngoài phạm vi dữ liệu
 
 ---
 
