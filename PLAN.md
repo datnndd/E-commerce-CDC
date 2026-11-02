@@ -6,7 +6,7 @@
 > **Quy tắc làm việc:** Làm xong MVP end-to-end ở scale nhỏ trước (100k orders), rồi mới scale lớn và nâng cấp CDC. Theo lựa chọn hiện tại, Giai đoạn 4 và 5 được triển khai, đối soát local trước rồi kiểm tra cùng nhau trên Databricks. Chỉ đánh dấu tiêu chí "Done" cloud sau khi có kết quả chạy thực; mỗi phần hoàn tất cần tick checklist, commit Git và ghi kết quả vào README.
 
 - **Niche:** E-commerce / Retail
-- **Stack chính:** Docker, PostgreSQL/Amazon RDS, Python, Amazon S3, Databricks trên AWS, Spark, Delta Lake, dbt-databricks, Airflow; công cụ dashboard cần chốt trước Giai đoạn 7
+- **Stack chính:** Docker, PostgreSQL/Amazon RDS, Python, Amazon S3, Databricks trên AWS, Spark, Delta Lake, dbt-databricks, Airflow, Power BI
 - **Region:** S3/RDS ở `ap-southeast-1`, Databricks Free Edition ở `us-east-2`; chấp nhận kết nối liên Region cho demo, theo dõi phí truyền dữ liệu và độ trễ. Không lưu account ID, credential hoặc token trong repo.
 - **Scale mục tiêu:** 500k customers · 100k products · 10M orders · 25–35M order_items · 15–30M clickstream events
 - **Thời gian ước tính:** 18–22 ngày, 3–4 giờ/ngày. Nếu chỉ có 2 giờ/ngày: 28–35 ngày
@@ -27,7 +27,7 @@
 | 7 | Dashboard & Kiểm chứng số liệu | Ngày 19–20 | Dashboard 5 trang theo sáu business marts và vận hành, số khớp với OLTP |
 | 8 | Nâng cấp & Đóng gói Portfolio | Ngày 21–22+ (tuỳ chọn) | Debezium/Kafka, README, demo, CV |
 
-**Trạng thái 02/11/2026:** Giai đoạn 4–5 đã qua `dbt build` 122/122 và đối soát baseline. DAG Airflow local chạy thử thành công toàn tuyến trên database 1C, prefix S3 và schema Databricks riêng: Silver và Gold đều có 99.461 orders; 122/122 model/test qua, quarantine bằng 0, Ops ghi nhận `success`. Bài thử payment âm đã khiến Great Expectations fail 3 lần, webhook local nhận alert và Gold giữ nguyên. Sau khi trả payment về 99,33, Silver local và bước publish + dbt chạy riêng đã phục hồi, `dbt build` lại đạt 122/122 và Gold không có payment âm hay order trùng. Docker Desktop dừng giữa lượt DAG phục hồi nên chưa có bằng chứng một lượt Airflow phục hồi hoàn chỉnh. Lịch chạy không người giám sát vẫn cần token Databricks riêng và webhook do chủ dự án cấu hình.
+**Trạng thái 02/11/2026:** Giai đoạn 4–5 đã qua `dbt build` 122/122 và đối soát baseline. DAG Airflow local chạy thử thành công toàn tuyến trên database 1C, prefix S3 và schema Databricks riêng: Silver và Gold đều có 99.461 orders; 122/122 model/test qua, quarantine bằng 0, Ops ghi nhận `success`. Bài thử payment âm đã khiến Great Expectations fail 3 lần, webhook local nhận alert và Gold giữ nguyên. Sau khi trả payment về 99,33, Silver local và bước publish + dbt chạy riêng đã phục hồi, `dbt build` lại đạt 122/122 và Gold không có payment âm hay order trùng. Chủ dự án xác nhận đã thấy một lượt DAG thành công và chấp nhận chốt Giai đoạn 6; metadata Airflow local đọc trong lượt kiểm tra này vẫn có một run `running` và một run `queued`, nên lượt thành công mới chưa được đối chiếu bằng run ID. Bài thử hai lượt cùng logical date và lịch chạy không người giám sát vẫn chưa được xác minh. Giai đoạn 7 sẽ dùng Power BI.
 
 ---
 
@@ -284,10 +284,10 @@ Local verifier đã chạy 14 singular SQL tests cho business marts, phát hiệ
 
 ### Done khi
 - [x] Chạy DAG với nguồn 1C cô lập: Silver và Gold cùng 99.461 orders, sáu marts có tổng 150.672 dòng, `dbt build` 122/122. S3 và Databricks của lượt thử dùng prefix/schema riêng; bảng Silver chính vẫn trỏ về vị trí cũ.
-- [ ] Tạo một `order_payments.payment_value < 0` trong nguồn thử → checkpoint fail, DAG dừng đúng chỗ, có alert, Gold không đổi.
-- [ ] Chạy lại cùng logical date hai lần → không trùng khóa nguồn, Silver, Gold hay marts; `ops_pipeline_runs` truy vết được cả kết quả chạy lại.
+- [x] Tạo một `order_payments.payment_value < 0` trong nguồn thử → checkpoint fail, DAG dừng đúng chỗ, có alert, Gold không đổi.
+- [ ] Chạy lại cùng logical date hai lần → không trùng khóa nguồn, Silver, Gold hay marts; `ops_pipeline_runs` truy vết được cả kết quả chạy lại. Chủ dự án chấp nhận chốt Giai đoạn 6 trước khi xác minh tiêu chí này.
 
-**Bằng chứng phục hồi từng bước:** sau khi sửa payment 1C về 99,33, Silver local có 103.906 payment, không có khóa trùng hay giá trị âm. Publish Silver lên schema thử thành công, `dbt build` đạt 122/122; Gold có 99.461 orders và 103.906 payments, payment thử là 99,33 và không còn payment âm. Hai lượt Airflow bị gián đoạn có Ops `failed`, không ghi nhầm `success`. Tiêu chí hai lượt Airflow thành công cùng logical date còn mở vì `dags test` đồng thời đã gây xung đột SQLite và Docker Desktop dừng trong lượt chạy tuần tự sau đó.
+**Bằng chứng phục hồi từng bước:** sau khi sửa payment 1C về 99,33, Silver local có 103.906 payment, không có khóa trùng hay giá trị âm. Publish Silver lên schema thử thành công, `dbt build` đạt 122/122; Gold có 99.461 orders và 103.906 payments, payment thử là 99,33 và không còn payment âm. Hai lượt Airflow bị gián đoạn có Ops `failed`, không ghi nhầm `success`. Tiêu chí hai lượt Airflow thành công cùng logical date còn mở vì `dags test` đồng thời đã gây xung đột SQLite và Docker Desktop dừng trong lượt chạy tuần tự sau đó. Việc chốt Giai đoạn 6 là nghiệm thu của chủ dự án, không phải bằng chứng bổ sung cho tiêu chí này.
 
 ---
 
@@ -295,11 +295,11 @@ Local verifier đã chạy 14 singular SQL tests cho business marts, phát hiệ
 
 **Mục tiêu:** Dashboard trả lời được câu hỏi nghiệp vụ và mọi con số trên đó đều đối soát được về nguồn.
 
-### Quyết định mở
-- Công cụ dashboard chưa được chọn. Trước khi bắt đầu giai đoạn này, chọn công cụ có cách kết nối được kiểm chứng với Databricks SQL hoặc với mart đã xuất bản, chi phí phù hợp và quyền chia sẻ bản demo rõ ràng.
+### Công cụ dashboard
+- Chủ dự án chọn Power BI. Trước khi dựng báo cáo, kiểm chứng Power BI Desktop kết nối tới Databricks SQL và đọc được một mart cùng `ops_pipeline_runs`; sau đó chốt Import/DirectQuery, cách refresh và quyền chia sẻ bản demo.
 
 ### Việc cần làm
-- [ ] Kết nối công cụ dashboard đã chọn với sáu business marts Gold; trang Ops đọc `ops_pipeline_runs` từ Giai đoạn 6. Không để dashboard tự join các fact/dim thô để tính KPI.
+- [ ] Kết nối Power BI với sáu business marts Gold; trang Ops đọc `ops_pipeline_runs` từ Giai đoạn 6. Không để dashboard tự join các fact/dim thô để tính KPI.
 - [ ] **Trang 1 — Executive/Sales** (`mart_daily_sales`): doanh thu **item đã giao**, số đơn mọi status, số đơn đã giao, AOV item đã giao và tỉ lệ huỷ; đường doanh thu theo ngày, so sánh theo bang khách. Khi gộp nhiều ngày/bang, tính lại AOV = tổng `delivered_item_revenue_brl` / tổng `delivered_order_count` và tỉ lệ huỷ = tổng `canceled_order_count` / tổng `order_count`, không lấy trung bình các tỉ lệ có sẵn.
 - [ ] **Trang 2 — Product** (`mart_product_performance`): Top sản phẩm, danh mục, seller và bang seller theo doanh thu item đã giao; số item bán. Mart hiện không có ngày bán hoặc bang khách, nên đây là tổng hợp toàn kỳ: không gắn bộ lọc ngày/bang khách từ trang Executive. Tổng `order_count` theo các product/category không phải số đơn duy nhất vì một đơn có thể chứa nhiều item.
 - [ ] **Trang 3 — Customer/RFM** (`mart_customer_rfm`): phân bố số khách theo segment, tổng `monetary_brl` theo segment, bảng khách hàng giá trị cao. Hiển thị `as_of_date`; đây là một phân đoạn hiện tại theo ngày dữ liệu, không phải lịch sử segment theo tháng hay ngày đăng ký khách.

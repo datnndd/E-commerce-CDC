@@ -1,6 +1,6 @@
 # E-commerce CDC Lakehouse
 
-Portfolio project in progress. The target pipeline is PostgreSQL OLTP → S3 Bronze → Databricks Delta Silver/Gold with dbt-databricks → dashboard, orchestrated by Airflow. Docker Compose configures PostgreSQL 18.6 and Airflow 3.3.2 for local development. Olist loading, the isolated OLTP simulator, Bronze extraction, local Silver, and local Gold/business-mart SQL proof are implemented. The verified local Silver snapshot has been published to Databricks, where Gold and six business marts passed two full dbt builds and source reconciliation. The Stage 1C source-change path through cloud Bronze/Silver and orchestration remain open. See [PLAN.md](PLAN.md).
+Portfolio project in progress. The target pipeline is PostgreSQL OLTP → S3 Bronze → Databricks Delta Silver/Gold with dbt-databricks → Power BI, orchestrated by Airflow. Docker Compose configures PostgreSQL 18.6 and Airflow 3.3.2 for local development. Olist loading, the isolated OLTP simulator, Bronze extraction, local Silver, and local Gold/business-mart SQL proof are implemented. The verified local Silver snapshot has been published to Databricks, where Gold and six business marts passed two full dbt builds and source reconciliation. An isolated Stage 1C source-change run passed through Airflow, Silver, and Gold; the owner accepted Stage 6 closure. Repeatability under the same logical date and unattended scheduling remain unverified. See [PLAN.md](PLAN.md).
 
 ## Stage 0: local setup
 
@@ -244,7 +244,7 @@ On 2026-11-02, both full cloud builds passed 122/122 nodes with 85 data tests an
 
 ![dbt lineage from Silver through the Daily Sales mart](docs/images/dbt-lineage-sales.png)
 
-An isolated Databricks Silver copy proved snapshot behavior: changing one customer's city and one product's `current_price` created a second version of each with the old `dbt_valid_to` closed. The historical order retained its original customer/product keys and BRL 44.99 item price while the new catalog price was BRL 54.99. The main Silver/OLTP snapshots were not changed. A full Stage 1C source → Bronze → Silver → dbt test still remains; the frozen main Silver snapshot has no `products.current_price` or soft-delete fields. The earlier second `fct_orders` MERGE updated all 99,441 unchanged rows. Stage 6 added a same-key/same-ingestion-time exclusion to the six incremental facts; a later full cloud build passed 122/122, and Delta history showed zero updated and zero inserted rows for all six facts on unchanged Silver.
+An isolated Databricks Silver copy proved snapshot behavior: changing one customer's city and one product's `current_price` created a second version of each with the old `dbt_valid_to` closed. The historical order retained its original customer/product keys and BRL 44.99 item price while the new catalog price was BRL 54.99. The main Silver/OLTP snapshots were not changed. A separate isolated Stage 1C source → Bronze → Silver → dbt run later passed in Stage 6; the frozen main Silver snapshot has no `products.current_price` or soft-delete fields. The earlier second `fct_orders` MERGE updated all 99,441 unchanged rows. Stage 6 added a same-key/same-ingestion-time exclusion to the six incremental facts; a later full cloud build passed 122/122, and Delta history showed zero updated and zero inserted rows for all six facts on unchanged Silver.
 
 ### Stage 5: business marts
 
@@ -286,6 +286,8 @@ On 2026-11-02, `airflow dags test ecommerce_cdc_daily 2026-11-02` ran end to end
 An isolated negative-payment test made `slv_payments` fail all three GX attempts; Airflow did not publish Silver or run dbt, the local webhook received an alert, and the existing Gold order count stayed at 99,461. The payment was restored to 99.33 in the isolated source. A concurrent `airflow dags test` with the same logical date caused a SQLite metadata conflict, and Docker Desktop stopped during the subsequent recovery run after the GX gate passed. Both interrupted Ops rows were marked `failed` with their causes. Run further `dags test` commands **sequentially** and recheck the final DagRun state on a stable Docker runtime. The scheduled, unattended path remains unverified.
 
 The recovered local Silver has 103,906 payments, zero duplicate payment keys, zero negative values, and the restored payment at 99.33. Publishing that Silver from local code succeeded; a separate full dbt build passed 122/122. Databricks Gold now has 99,461 orders and 103,906 payments, with no negative payments. The recovery was completed through individual publish/dbt commands after the Docker interruption; it is not evidence of a second completed Airflow DagRun.
+
+The owner subsequently reported a successful full DAG run and accepted Stage 6 closure. The local Airflow metadata inspected on 2026-11-02 still showed one manual run `running` at `verify_silver` and one `queued`, with no matching success run ID supplied. Treat that report as owner acceptance, not independent verification of the later run. The Stage 7 plan carries the Ops/run-ID reconciliation and keeps repeatability and unattended scheduling as open checks.
 
 ## Stage 0 cloud status
 
