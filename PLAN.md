@@ -27,7 +27,7 @@
 | 7 | Dashboard & Kiểm chứng số liệu | Ngày 19–20 | Dashboard 5 trang theo sáu business marts và vận hành, số khớp với OLTP |
 | 8 | Nâng cấp & Đóng gói Portfolio | Ngày 21–22+ (tuỳ chọn) | Debezium/Kafka, README, demo, CV |
 
-**Trạng thái 02/11/2026:** Giai đoạn 4 và 5 đã có SQL dbt và đối soát trên Delta local. Chưa tạo các bảng Silver/Gold của pipeline trong Databricks, nên `dbt build`, snapshots SCD2 thực tế, generic tests, incremental MERGE và query profile trên cloud vẫn chờ kiểm chứng.
+**Trạng thái 02/11/2026:** Đã đăng ký 12 bảng Silver Delta từ snapshot local trong `ecommerce_cdc.silver` trên Databricks; hai lần `dbt build` toàn bộ Giai đoạn 4–5 đều PASS=122/122, 85 data tests xanh. Gold/marts đối soát khớp baseline PostgreSQL và fixture SCD2 cô lập trên Databricks đã tạo hai phiên bản. Job Silver chạy trực tiếp trên Databricks và chu trình thay đổi nguồn 1C → Bronze → Silver → Gold vẫn chưa kiểm chứng; lần MERGE thứ hai còn cập nhật lại mọi order dù nguồn đứng yên.
 
 ---
 
@@ -168,7 +168,7 @@
 **Mục tiêu:** Biến Bronze raw thành bảng Silver sạch, tin cậy được — một dòng duy nhất cho mỗi PK, phản ánh trạng thái mới nhất ở OLTP.
 
 ### Việc cần làm
-- [ ] Tạo schema/catalog Silver trong Databricks và lưu các bảng Delta trên S3 qua Unity Catalog/external location đã cấu hình.
+- [x] Tạo catalog `ecommerce_cdc` với Gold managed storage dưới `s3://<project-bucket>/gold/`; đăng ký 12 bảng Silver Delta external từ `silver/stage3_local_20261102/` trong schema `silver`. Đối chiếu số dòng từng bảng trên Databricks với local. Đây là snapshot Silver local được publish để kiểm chứng Gold, chưa phải kết quả chạy Spark job Silver trong Databricks.
 - [x] Viết Spark job local `spark_jobs/silver_transform.py` đọc manifest committed, chuẩn hoá clickstream JSON hiện có (các event thực tế là JSON phẳng), clean + dedup `order_items` và ghi Delta. Đã chạy trên toàn bộ 9 bảng Olist local, clickstream và API; phần chạy trong Databricks vẫn chờ thử nghiệm cloud.
 - [x] Viết logic Silver bằng Spark trên bảng Delta local cho các bảng còn lại:
   - Chuẩn hoá: timestamp về UTC, cast đúng type, chuẩn hoá `status`; nguồn Olist hiện không có cột `email`
@@ -195,10 +195,10 @@
 **Mục tiêu:** Có nhóm star schema Gold với grain rõ cho commerce, behavior và reference; lưu các phiên bản customer/product quan sát được bằng SCD2. Triển khai và đối soát local trước, sau đó mới chạy trên Databricks.
 
 ### Việc cần làm
-- [x] Khởi tạo dbt project và profile mẫu Databricks OAuth không chứa credential; chưa chạy với warehouse thực. Chỉ thêm package khi model hoặc test thực sự cần.
+- [x] Khởi tạo dbt project và profile mẫu Databricks OAuth không chứa credential; `dbt debug` đã kết nối warehouse thực, profile local hoàn chỉnh được Git bỏ qua. Chỉ thêm package khi model hoặc test thực sự cần.
 - [x] **Staging** (`models/staging/`, materialized = view): `stg_customers, stg_products, stg_sellers, stg_category_translation, stg_geolocation, stg_orders, stg_order_items, stg_payments, stg_reviews, stg_clickstream_events, stg_exchange_rates, stg_campaigns`
   - Silver đã chuẩn hóa nên staging hiện là view chuyển tiếp, không join/aggregate; giữ cột mới của nguồn 1C khi chúng xuất hiện trong Silver.
-- [x] **Snapshots SCD Type 2** đã định nghĩa (`snapshots/`); chưa chạy trên Databricks:
+- [x] **Snapshots SCD Type 2** đã định nghĩa (`snapshots/`) và chạy trong hai lần `dbt build` trên Databricks:
   - `customers_snapshot`: strategy = timestamp, `unique_key = customer_id`, `updated_at`
   - `products_snapshot`: strategy = timestamp, `unique_key = product_id`, `updated_at` (theo dõi thay đổi giá)
 - [x] **Intermediate** (`models/intermediate/`): `int_orders_enriched` cộng item/payment **riêng từng bảng** về `order_id` trước khi join; `int_customer_orders` nhóm đơn đã giao theo `customer_unique_id` để phục vụ RFM.
@@ -209,17 +209,18 @@
   - Reference fact: `fct_exchange_rates` (một `(date, base, quote)`); tỷ giá không cộng dồn và cần quy tắc lấy ngày gần nhất trước đó khi quy đổi cuối tuần.
   - Các fact có thay đổi dùng Delta `incremental_strategy = merge` với `unique_key` theo grain, chọn dòng nguồn bằng thời gian ingestion của Silver (kể cả cập nhật đơn cũ); `fct_sessions` nhỏ có thể rebuild toàn bộ. Chọn partition/liquid clustering sau khi đo kích thước và query thực tế.
   - Gắn fact với phiên bản SCD2 tại thời điểm sự kiện **khi có lịch sử quan sát**; đơn Olist trước lần snapshot đầu tiên gắn với phiên bản đầu quan sát được. Không coi phiên bản này là trạng thái lịch sử thực của 2016–2018. SCD2 không tạo lại lịch sử chưa từng được ghi nhận.
-- [x] Viết dbt tests: `unique, not_null` theo grain, quan hệ fact → dimension, trạng thái đơn hợp lệ, giá item không âm, review score 1–5; test tổng item price và số dòng so với Silver/source baseline, test không fanout khi cộng payment/review. Các singular SQL tests đã chạy local; generic tests chờ `dbt build` trên Databricks.
+- [x] Viết dbt tests: `unique, not_null` theo grain, quan hệ fact → dimension, trạng thái đơn hợp lệ, giá item không âm, review score 1–5; test tổng item price và số dòng so với Silver/source baseline, test không fanout khi cộng payment/review. Cả 85 data tests (generic và singular) qua hai lần `dbt build` trên Databricks.
 - [x] Đối soát SQL Gold trên Silver local: 99,441 orders, 112,650 items, 103,886 payments, 99,224 reviews, 80 click events, 777 rates; tổng `item_price_brl` = BRL 13,591,643.70 và cả 24 tháng mua hàng khớp baseline. Fixture hai phiên bản xác nhận đơn cũ giữ khóa phiên bản đầu và giá bán gốc.
 - [x] Khi nối Product Mart ở Giai đoạn 5, test grain phát hiện `dim_category` có hai dòng khóa `__unknown__` do category NULL. Đã sửa để NULL ánh xạ tới một dòng; kiểm tra local xác nhận cả tám dimension keys đều unique/non-null và doanh thu product mart không bị nhân lên.
-- [x] `dbt parse` nhận 35 models (29 model Giai đoạn 4 + 6 business marts), 2 snapshots, 85 data tests; đây là kiểm tra cấu trúc, chưa phải `dbt build` trên Databricks.
-- [ ] Chạy `dbt docs generate` và xem lineage graph — chụp lại graph này cho README
+- [x] `dbt parse` nhận 35 models (29 model Giai đoạn 4 + 6 business marts), 2 snapshots, 85 data tests; hai lần `dbt build` cloud đều PASS=122, WARN=0, ERROR=0.
+- [x] Chạy `dbt docs generate` trên profile cloud, xem lineage graph của `mart_daily_sales` và lưu ảnh tại `docs/images/dbt-lineage-sales.png` cho README.
+- [x] Trên schema Silver kiểm thử tách biệt trong Databricks, đổi city của một customer và `current_price` của một product, chạy lại snapshots + dependent facts: mỗi đối tượng có hai phiên bản, phiên bản cũ đóng `dbt_valid_to`; fact của đơn Olist cũ giữ khóa phiên bản đầu và giá item BRL 44.99 dù giá catalog mới là BRL 54.99. Đây là kiểm thử dbt từ Silver cô lập, không thay cho chu trình nguồn 1C → Bronze → Silver.
 
 ### Done khi
 - [x] SQL của 29 model Giai đoạn 4 chạy trên 12 bảng Silver Delta local; 5 singular SQL tests và fixture phát hiện duplicate item đã qua. Fixture hai phiên bản kiểm tra khóa SCD2 và giá bán, không thay thế lần chạy snapshot thật.
-- [ ] `dbt build` xanh trên Databricks ở lần chạy đầu và lần chạy incremental tiếp theo; trước đó SQL Gold được đối soát trên Delta local.
+- [x] `dbt build` xanh trên Databricks ở lần chạy đầu và lần chạy incremental tiếp theo (122/122 mỗi lần); Delta history của `fct_orders` xác nhận lần hai có `MERGE`, số dòng và doanh thu không tăng trùng. MERGE hiện cập nhật lại 99,441 order cùng mốc ingestion dù dữ liệu không đổi; cần tối ưu trước khi chạy theo lịch.
 - [ ] **Test SCD2:** trên nguồn kiểm thử 1C riêng, đổi giá 1 product + đổi city 1 customer → chạy lại pipeline → snapshot có thêm phiên bản và đóng `dbt_valid_to` cũ; fact cũ giữ `item_price` và khóa phiên bản phù hợp. Snapshot RDS gốc hiện không có `current_price`/soft-delete nên không thể dùng nó để chứng minh thử nghiệm này.
-- [ ] So sánh query profile trong Databricks khi có/không có filter `purchase_date_key`, ghi lại lượng dữ liệu đọc và thời gian thực thi để quyết định có cần clustering/partition
+- [x] So sánh query history/profile trên `fct_orders` khi có/không có `purchase_date_key = 20180101`: đều đọc một file 10,111,873 byte từ cache; lần lượt 837 ms và 939 ms, số dòng đọc 74 và 99,441. Filter chưa prune file, nhưng ở kích thước hiện tại chưa có bằng chứng cần clustering/partition; đo lại khi scale.
 
 ### Rủi ro thường gặp
 - Dùng `products.current_price` để tính doanh thu cũ hoặc ép mọi đơn 2016–2018 vào cửa sổ hiệu lực snapshot mới → báo cáo lịch sử sai. Dùng `order_items.price`; với thuộc tính product/customer trước lần quan sát đầu, ghi rõ giới hạn lịch sử.
@@ -229,7 +230,7 @@
 
 ## Giai đoạn 5 — Data Marts & Business Logic (Ngày 15–16)
 
-**Mục tiêu:** Tạo sáu mart theo câu hỏi kinh doanh trên các fact đúng grain, để dashboard không phải tự join phức tạp. Hoàn thiện và đối soát local trước; người dùng sẽ chạy dbt giai đoạn 4–5 trên Databricks sau.
+**Mục tiêu:** Tạo sáu mart theo câu hỏi kinh doanh trên các fact đúng grain, để dashboard không phải tự join phức tạp. Đã hoàn thiện và đối soát local, sau đó chạy cả giai đoạn 4–5 trên Databricks.
 
 ### Việc cần làm
 - [x] **Sales:** `mart_daily_sales` một dòng cho ngày mua × bang của khách, từ `fct_orders`; tổng đơn/hủy tính trên mọi status, doanh thu hàng, phí giao và AOV chỉ tính `delivered`. `mart_product_performance` một dòng cho product × seller × category quan sát lúc bán, từ `fct_order_items` đã giao. Không chia item revenue theo payment method khi chưa có quy tắc phân bổ.
@@ -238,7 +239,7 @@
 - [x] **Payment:** `mart_payment_mix_daily` một dòng cho **ngày mua của đơn** × `payment_type`, từ `fct_payments`; có số payment, số đơn phân biệt, tổng `payment_value_brl`, chỉ số trả góp. Nguồn không có timestamp thanh toán; tổng payment không được gọi là doanh thu hàng.
 - [x] **Experience:** `mart_order_experience_daily` một dòng cho cohort ngày mua × bang khách, từ đơn `delivered`. Gom `fct_reviews` về một điểm trung bình mỗi order trước khi join; giao trễ so bằng ngày địa phương `America/Sao_Paulo` giữa actual và estimated delivery. Báo số đơn có delivery/review để hiểu mẫu số.
 - [x] **Reference:** `fct_exchange_rates` vẫn là fact tham chiếu; chỉ thêm USD vào mart khi dashboard cần, lấy rate gần nhất với `date <= purchase_date`. `mart_campaign_performance` chưa làm vì campaign chỉ là mock và event không có `campaign_id`; không tính refund rate hay rating theo product vì nguồn không hỗ trợ.
-- [x] Test mart trên Delta local: grain duy nhất; sales/product/RFM/payment/experience/funnel đối soát với fact tương ứng; doanh thu delivered khớp baseline nguồn ở cả 12 tháng lịch (BRL 13,221,498.11); mỗi `customer_unique_id` có đúng một segment, các giá trị R/F/M bằng nhau cùng điểm; funnel mỗi bước không vượt số session. Chưa chạy dbt generic/singular tests trên Databricks.
+- [x] Test mart trên Delta local và Databricks: grain duy nhất; sales/product/RFM/payment/experience/funnel đối soát với fact tương ứng; doanh thu delivered khớp baseline nguồn ở cả 12 tháng lịch (BRL 13,221,498.11); mỗi `customer_unique_id` có đúng một segment, các giá trị R/F/M bằng nhau cùng điểm; funnel mỗi bước không vượt số session. Các test generic/singular trong hai lần `dbt build` cloud đều pass.
 
 **Kết quả local trên snapshot Olist hiện tại** (số dòng có thể đổi khi nạp thêm CDC):
 
@@ -255,8 +256,8 @@ Local verifier đã chạy 14 singular SQL tests cho business marts, phát hiệ
 
 ### Done khi
 - [x] Sáu model business và các SQL tests chạy được trên Gold/Silver Delta local; test grain có fixture vi phạm và phát hiện đúng.
-- [ ] Cả sáu mart và tests build được bằng `dbt build --select marts.business` trên Databricks sau khi Silver giai đoạn 3 có trong catalog; trước đó toàn bộ SQL được chạy và đối soát local.
-- [x] Tổng doanh thu delivered của mart khớp fact; cả 12 tháng lịch khớp baseline SQL từ Postgres OLTP. Đối chiếu thêm một ngày bất kỳ trên Databricks với Postgres khi chạy cloud.
+- [x] Cả sáu mart và tests build thành công trong hai lần `dbt build` toàn bộ project trên Databricks; số dòng từng mart khớp local.
+- [x] Tổng doanh thu delivered của mart khớp fact; cả 12 tháng lịch khớp baseline SQL từ Postgres OLTP. Riêng ngày 2018-01-01 (`America/Sao_Paulo`), PostgreSQL local và Databricks cùng có 81 items, BRL 6,948.21 giá item và BRL 6,818.31 doanh thu item đã giao.
 - [x] RFM: tổng `frequency_orders` bằng số đơn delivered, một dòng và một segment cho mỗi `customer_unique_id` có đơn delivered
 
 ---

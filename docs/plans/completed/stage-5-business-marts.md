@@ -4,23 +4,23 @@ Date: 2026-11-02
 
 ## Status
 
-Active
+Completed
 
 ## Outcome
 
-Build six dbt business marts from the Stage 4 Gold facts, reconcile their grains and measures against local Delta Gold/Silver, and leave cloud dbt execution for the owner's later Databricks check.
+Build six dbt business marts from the Stage 4 Gold facts, reconcile their grains and measures against local Delta Gold/Silver, then validate them on Databricks.
 
 ## Context
 
 - `PLAN.md` stages 4–5 and `docs/decisions/0001-gold-fact-grains.md` define fact grains and historical sale price.
 - The owner approved four original marts plus payment mix and order experience, and chose simple quintile-based RFM labels.
-- `spark_jobs/verify_gold.py` executes the current dbt SQL against local Silver Delta; Databricks Silver tables do not yet exist.
+- `spark_jobs/verify_gold.py` executes the current dbt SQL against local Silver Delta; the later cloud check registered the same Silver snapshot on Databricks.
 
 ## Scope
 
 In scope: six `models/marts/business/` models, dbt tests, local verification, plan and README updates.
 
-Out of scope: publishing to Databricks, building a dashboard, allocating payment by item/category, inferring product-level reviews or refund rate, and attributing mock campaigns to orders.
+Out of scope for the initial implementation: publishing to Databricks. Building a dashboard, allocating payment by item/category, inferring product-level reviews or refund rate, and attributing mock campaigns to orders remain out of scope. The Databricks follow-up is recorded below.
 
 ## Approach
 
@@ -42,7 +42,9 @@ Out of scope: publishing to Databricks, building a dashboard, allocating payment
 - [x] Record six mart contracts and RFM rules.
 - [x] Implement dbt models and tests.
 - [x] Execute and reconcile local business marts.
-- [x] Document Databricks handoff in `README.md`; the owner will run the cloud check later.
+- [x] Document the Databricks run sequence in `README.md`.
+- [x] 2026-11-02 cloud follow-up: build all six marts twice on Databricks and run their generic/singular tests.
+- [x] Compare all six mart row counts and delivered revenue with the local proof, all 12 calendar months with the independent PostgreSQL baseline, and one Sao Paulo business day directly with local PostgreSQL.
 
 ## Decisions
 
@@ -55,7 +57,9 @@ Out of scope: publishing to Databricks, building a dashboard, allocating payment
 - Focused proof: six mart-grain SQL tests passed; a duplicate sales-row fixture was rejected. RFM tie and segment tests passed.
 - Integration or end-to-end proof: six business SQL models ran against local Delta. Sales, product, RFM, payment, experience, and funnel totals matched their facts; Stage 1B delivered revenue matched all 12 calendar months at BRL 13,221,498.11.
 - Repository-required checks: `dbt parse` passed; `dbt ls --select marts.business --resource-type model` resolved exactly six models. `uv lock --check`, Python compile, and `git diff --check` passed.
+- Databricks proof: two full project builds each passed 122/122 nodes with zero errors, including all six marts and 85 data tests. Mart row counts match the local proof. Delivered revenue is BRL 13,221,498.11; all 12 calendar months match Stage 1B.
+- Independent one-day proof: for 2018-01-01 in `America/Sao_Paulo`, local PostgreSQL and Databricks both report 81 items, BRL 6,948.21 item price, and BRL 6,818.31 delivered item revenue.
 
 ## Result
 
-Local Stage 5 implementation and source/fact reconciliation are complete. Databricks materialization and dbt test execution remain for the owner's later cloud check; keep this plan active until those results are recorded.
+Stage 5 implementation, local and Databricks materialization, dbt tests, source/fact reconciliation, and the independent one-day PostgreSQL comparison are complete. The full source-change pipeline remains tracked by the active Stage 4 plan.

@@ -1,6 +1,6 @@
 # E-commerce CDC Lakehouse
 
-Portfolio project in progress. The target pipeline is PostgreSQL OLTP → S3 Bronze → Databricks Delta Silver/Gold with dbt-databricks → dashboard, orchestrated by Airflow. Docker Compose configures PostgreSQL 18.6 and Airflow 3.3.2 for local development. Olist loading, the isolated OLTP simulator, Bronze extraction, local Silver, and local Gold/business-mart SQL proof are implemented; Databricks materialization and end-to-end cloud reconciliation remain unverified. See [PLAN.md](PLAN.md).
+Portfolio project in progress. The target pipeline is PostgreSQL OLTP → S3 Bronze → Databricks Delta Silver/Gold with dbt-databricks → dashboard, orchestrated by Airflow. Docker Compose configures PostgreSQL 18.6 and Airflow 3.3.2 for local development. Olist loading, the isolated OLTP simulator, Bronze extraction, local Silver, and local Gold/business-mart SQL proof are implemented. The verified local Silver snapshot has been published to Databricks, where Gold and six business marts passed two full dbt builds and source reconciliation. The Stage 1C source-change path through cloud Bronze/Silver and orchestration remain open. See [PLAN.md](PLAN.md).
 
 ## Stage 0: local setup
 
@@ -134,8 +134,9 @@ The user reports an EC2/RDS `orders` upload, but its RDS watermark and S3 manife
 For the main project bucket, generate demo clickstream from the committed RDS `orders` and `order_items` snapshots already in S3 Bronze. The generator verifies each Parquet file against its manifest, samples delivered orders across the purchase-date range, and uses their real customer, product, order, and purchase-time values. It does not modify RDS. Create a new output file, then upload it to the project bucket:
 
 ```powershell
-uv run --frozen python -m sources.clickstream.generate_from_bronze --bucket ecommerce-cdc-413612133697-ap-southeast-1 --output logs/clickstream/rds_snapshot_demo.jsonl --count 20
-$env:S3_BUCKET = "ecommerce-cdc-413612133697-ap-southeast-1"
+$projectBucket = "<project-bucket>"  # replace with the bucket behind the ecommerce_cdc_s3 external location
+uv run --frozen python -m sources.clickstream.generate_from_bronze --bucket $projectBucket --output logs/clickstream/rds_snapshot_demo.jsonl --count 20
+$env:S3_BUCKET = $projectBucket
 uv run --frozen python -m ingestion.ingest_logs logs/clickstream/rds_snapshot_demo.jsonl
 ```
 
@@ -210,7 +211,7 @@ docker run --rm --mount "type=bind,source=$((Get-Location).Path),target=/workspa
 docker run --rm --mount "type=bind,source=$((Get-Location).Path),target=/workspace" ecommerce-silver-local uv run --frozen python -m spark_jobs.verify_silver --silver-root /workspace/logs/local_silver
 ```
 
-The verifier checks all 12 tables for missing or duplicate keys, and checks that purchase events join to their order/customer and order-item product. The exchange-rate business date stays in `date`; its Silver `updated_at` is the API ingestion time used to choose the latest fetched value for a date/currency pair. Campaigns retain `synthetic=true`. This local proof does not create Databricks catalog objects or write Silver to S3; those integration steps remain for cloud testing.
+The verifier checks all 12 tables for missing or duplicate keys, and checks that purchase events join to their order/customer and order-item product. The exchange-rate business date stays in `date`; its Silver `updated_at` is the API ingestion time used to choose the latest fetched value for a date/currency pair. Campaigns retain `synthetic=true`. The local Silver snapshot was subsequently uploaded to the project S3 bucket under `silver/stage3_local_20261102/` and registered as 12 external Delta tables in `ecommerce_cdc.silver`; Databricks counts match all local tables. This publication validates dbt inputs, but the Silver Spark job has not yet run inside Databricks.
 
 ### Stage 4: Gold star schema
 
@@ -225,7 +226,7 @@ docker run --rm --mount "type=bind,source=$((Get-Location).Path),target=/workspa
 
 The local proof executed all 29 dbt model SELECTs against the 12 Silver tables, checked the six source-level fact counts, and found 20 sessions. The historical item price total was BRL 13,591,643.70; the 24 purchase months also matched the frozen Stage 1B baseline. Five singular dbt tests passed locally, and a duplicate item deliberately failed the grain check. The SCD2 fixture used two customer/product versions to check the old-order fallback and the unchanged sale price. This proof does **not** execute dbt snapshots, generic tests, or Delta incremental MERGE.
 
-When the 12 Silver tables are available in the Databricks catalog, copy `dbt_project/profiles.yml.example` to the ignored `dbt_project/profiles.yml` and set `DBT_DATABRICKS_HOST`, `DBT_DATABRICKS_HTTP_PATH`, `DBT_CATALOG`, and `DBT_SILVER_SCHEMA` in the local shell. The profile uses interactive OAuth and stores no token in Git. Then run:
+To reproduce the cloud build, copy `dbt_project/profiles.yml.example` to the ignored `dbt_project/profiles.yml` and set `DBT_DATABRICKS_HOST`, `DBT_DATABRICKS_HTTP_PATH`, `DBT_CATALOG=ecommerce_cdc`, `DBT_SILVER_SCHEMA=silver`, and `DBT_TARGET_SCHEMA=analytics_dev` in the local shell. The profile uses interactive OAuth and stores no token in Git. Then run:
 
 ```powershell
 uv run --frozen dbt build --project-dir dbt_project --profiles-dir dbt_project
@@ -233,9 +234,13 @@ uv run --frozen dbt build --project-dir dbt_project --profiles-dir dbt_project
 uv run --frozen dbt docs generate --project-dir dbt_project --profiles-dir dbt_project
 ```
 
-The second build is the incremental MERGE check. Before declaring Stage 4 complete, also run the isolated Stage 1C price/address change through Silver and dbt snapshots and verify old fact keys and `dbt_valid_to`. The frozen main Silver snapshot has no `products.current_price` or customer soft-delete columns; dbt cannot invent those source fields or reconstruct product/customer attributes from 2016–2018.
+On 2026-11-02, both full cloud builds passed 122/122 nodes with 85 data tests and zero errors. The first created Gold and the snapshots; Delta history confirms that the second performed `MERGE` on `fct_orders`. Counts remained 99,441 orders and 112,650 items, total item price stayed BRL 13,591,643.70, and all 24 purchase months matched the independent PostgreSQL baseline. `dbt docs generate` succeeded; this is the inspected lineage for `mart_daily_sales`:
 
-### Stage 5: local business marts
+![dbt lineage from Silver through the Daily Sales mart](docs/images/dbt-lineage-sales.png)
+
+An isolated Databricks Silver copy proved snapshot behavior: changing one customer's city and one product's `current_price` created a second version of each with the old `dbt_valid_to` closed. The historical order retained its original customer/product keys and BRL 44.99 item price while the new catalog price was BRL 54.99. The main Silver/OLTP snapshots were not changed. A full Stage 1C source → Bronze → Silver → dbt test still remains; the frozen main Silver snapshot has no `products.current_price` or soft-delete fields. The second `fct_orders` MERGE updated all 99,441 unchanged rows because the current `>=` ingestion-time boundary replays the entire snapshot batch. It is correct by row count but should be optimized before daily scheduling.
+
+### Stage 5: business marts
 
 `dbt_project/models/marts/business/` contains six tables: `mart_daily_sales` (purchase date × customer state), `mart_product_performance` (product × seller × sale-time category), `mart_customer_rfm` (unique shopper), `mart_funnel_daily` (session start date × device × channel), `mart_payment_mix_daily` (related order purchase date × payment type), and `mart_order_experience_daily` (delivered-order purchase cohort × customer state). Sales and RFM use delivered item price; payment value remains a separate payment measure. Reviews are averaged per order before the experience join. The funnel is from synthetic order-derived sessions, and no refund, product-level rating, or campaign attribution KPI is inferred.
 
@@ -247,10 +252,10 @@ Run the full Stage 4–5 SQL proof locally:
 docker run --rm --mount "type=bind,source=$((Get-Location).Path),target=/workspace" ecommerce-silver-local uv run --frozen python -m spark_jobs.verify_gold --silver-root /workspace/logs/local_silver --project-dir /workspace/dbt_project --baseline /workspace/docs/baselines/olist_20261023T032906Z_99dc95d7.json --business
 ```
 
-This local run checked all eight dimension keys, all six mart grains, totals against the corresponding facts, RFM scores/ties, and funnel bounds. It rejected a duplicate sales-row fixture. Delivered item revenue in `mart_daily_sales` matched the independent PostgreSQL baseline in all 12 calendar months: BRL 13,221,498.11. When Silver is available in Databricks, the full `dbt build` sequence above includes these six business marts and their dbt tests; repeat it to exercise the Stage 4 incremental facts, then run the Stage 1C SCD2 change proof. Local SQL execution does not establish that Databricks materialization or its generic tests have passed.
+The local run checked all eight dimension keys, six mart grains, fact totals, RFM scores/ties, and funnel bounds; it rejected a duplicate sales-row fixture. On Databricks, all six marts and their generic/singular tests passed in both full builds, and their row counts match local proof. Delivered item revenue in `mart_daily_sales` is BRL 13,221,498.11, matching the independent PostgreSQL baseline in all 12 calendar months. For 2018-01-01 in `America/Sao_Paulo`, local PostgreSQL and Databricks both returned 81 items, BRL 6,948.21 item price, and BRL 6,818.31 delivered item revenue.
 
 ## Stage 0 cloud status
 
 AWS Console and CloudShell access in `ap-southeast-1` have been checked. The project S3 bucket has Block Public Access, ACLs disabled, and default SSE-S3 encryption. A small object was uploaded, inspected, and deleted using the AWS CLI in CloudShell. The bucket name and cloud credentials are intentionally kept out of this repository.
 
-Databricks Free Edition CLI login is configured outside the repository. `SELECT 1` succeeded on its serverless SQL warehouse, which was then stopped. The workspace metastore is in `us-east-2`; the project S3 bucket stays in `ap-southeast-1` by choice. A project-scoped IAM role, Unity Catalog storage credential and external location were created. Databricks validation passed `READ`, `LIST`, `WRITE` and `DELETE` against that bucket. This cross-Region path can add transfer cost and latency; measure both before scaling. No pipeline dataset has been loaded yet.
+Databricks Free Edition CLI login is configured outside the repository. The workspace metastore is in `us-east-2`; the project S3 bucket stays in `ap-southeast-1` by choice. A project-scoped IAM role, Unity Catalog storage credential and external location were created. Databricks validation passed `READ`, `LIST`, `WRITE` and `DELETE` against that bucket. On 2026-11-02 the project catalog `ecommerce_cdc` was created with managed Gold storage under the bucket's `gold/` prefix, and the proven local Silver snapshot was registered from its `silver/` prefix. This cross-Region path can add transfer cost and latency; measure both before scaling.
