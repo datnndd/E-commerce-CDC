@@ -39,7 +39,7 @@ Out of scope: mutating the frozen source and building the Stage 5 dashboard mart
 - A direct many-to-many join of items, payments, or reviews would multiply measures; aggregate by order before order-level joins and retain separate fact grains.
 - The current local Silver lacks Stage 1C fields. Test customer address SCD2 on an isolated source; do not claim product price SCD2 until that source reaches Silver.
 - Upload every file in a Delta directory and verify S3 object sizes before registration; partial uploads must never be registered. Re-run publication into a fresh prefix if the snapshot changes, then point the external tables at that new version intentionally.
-- The unchanged second `fct_orders` MERGE updated all 99,441 rows because the `>=` ingestion boundary replays the entire snapshot batch. Retain the correctness proof, and address this before scheduling daily builds.
+- The earlier unchanged second `fct_orders` MERGE updated all 99,441 rows. Stage 6 now excludes existing keys at the same source-ingestion time; its first full cloud build on unchanged Silver updated/inserted zero rows in all six incremental facts. Recheck with a changed-source fixture before scheduling daily builds.
 - Changes are new dbt files and documentation; revert their diff if the local proof fails. Existing Silver and source data are read-only.
 
 ## Progress
@@ -70,6 +70,7 @@ Out of scope: mutating the frozen source and building the Stage 5 dashboard mart
 - Isolated SCD2 proof: customer city and product current price changes produced two versions per selected entity with one current version; the old order kept the first-version keys and BRL 44.99 item price after the catalog price reached BRL 54.99. The full Stage 1C source → Bronze → Silver → dbt change path remains untested.
 - Query profile: filtered and unfiltered order queries both read one 10,111,873-byte file from cache; 837 ms and 939 ms respectively. Current data size does not warrant clustering, but the filter did not prune files.
 - Efficiency finding: the unchanged second build updated all 99,441 matched orders because `>=` includes the whole snapshot ingestion-time boundary. This does not duplicate rows but should be optimized before scheduled operation.
+- Stage 6 optimization proof: a full cloud `dbt build` passed 122/122 after the six incremental facts excluded existing keys at the same ingestion timestamp. Delta history of all six MERGEs reported zero updated and zero inserted rows on unchanged Silver.
 - Independent day check: local PostgreSQL and Databricks both returned 81 items, BRL 6,948.21 item price, and BRL 6,818.31 delivered item revenue for 2018-01-01 in `America/Sao_Paulo`. The production customer/product snapshots still have 99,441/32,951 rows and zero closed versions after the isolated fixture.
 
 ## Result

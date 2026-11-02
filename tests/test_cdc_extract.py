@@ -111,7 +111,7 @@ class CdcExtractTest(unittest.TestCase):
                 cursor.execute("CREATE TABLE products (product_id varchar(32) PRIMARY KEY, updated_at timestamptz NOT NULL)")
                 cursor.execute(
                     "CREATE TABLE cdc_watermark (table_name varchar(63) PRIMARY KEY, "
-                    "last_updated_at timestamptz, last_run_at timestamptz)"
+                    "last_updated_at timestamptz, last_boundary_hash varchar(64), last_run_at timestamptz)"
                 )
                 cursor.execute(
                     "INSERT INTO products VALUES (%s, %s), (%s, %s)",
@@ -170,10 +170,8 @@ class CdcExtractTest(unittest.TestCase):
         self.assertEqual([event[0] for event in self.s3.events], ["data", "manifest"])
 
         extract_table(self.settings, self.s3, "test-bucket", "products")
-        self.assertEqual(len(self.s3.objects), 4)
-        replay = self.manifests()[1]
-        self.assertEqual(replay["window"]["lower_boundary_exclusive"], "2020-01-01T23:45:00Z")
-        self.assert_batch(replay, 1)
+        self.assertEqual(len(self.s3.objects), 2)
+        self.assertEqual(len(self.manifests()), 1)
 
         with psycopg.connect(
             host="127.0.0.1", port=self.settings["POSTGRES_PORT"], dbname="cdc_test",
@@ -181,16 +179,16 @@ class CdcExtractTest(unittest.TestCase):
         ) as connection:
             connection.execute("INSERT INTO products VALUES (%s, %s)", ("p3", datetime(2020, 1, 2, tzinfo=timezone.utc)))
         extract_table(self.settings, self.s3, "test-bucket", "products")
-        self.assertEqual(len(self.s3.objects), 6)
-        third = self.manifests()[2]
-        self.assertNotEqual(first["run_id"], third["run_id"])
-        self.assertEqual(third["load_type"], "delta")
-        self.assertEqual(third["window"]["lower_boundary_exclusive"], "2020-01-01T23:45:00Z")
-        table = self.assert_batch(third, 2)
+        self.assertEqual(len(self.s3.objects), 4)
+        replay = self.manifests()[1]
+        self.assertNotEqual(first["run_id"], replay["run_id"])
+        self.assertEqual(replay["load_type"], "delta")
+        self.assertEqual(replay["window"]["lower_boundary_exclusive"], "2020-01-01T23:45:00Z")
+        table = self.assert_batch(replay, 2)
         self.assertIn("ingested_at", table.column_names)
         self.assertIn("source_table", table.column_names)
         extract_table(self.settings, self.s3, "test-bucket", "products")
-        self.assertEqual(len(self.s3.objects), 8)
+        self.assertEqual(len(self.s3.objects), 4)
 
         with psycopg.connect(
             host="127.0.0.1", port=self.settings["POSTGRES_PORT"], dbname="cdc_test",
@@ -198,7 +196,7 @@ class CdcExtractTest(unittest.TestCase):
         ) as connection:
             connection.execute("INSERT INTO products VALUES (%s, %s)", ("p4", datetime(2020, 1, 3, tzinfo=timezone.utc)))
         extract_table(self.settings, self.s3, "test-bucket", "products")
-        latest = self.manifests()[4]
+        latest = self.manifests()[2]
         self.assertEqual(latest["window"]["lower_boundary_exclusive"], "2020-01-01T23:45:00Z")
         self.assert_batch(latest, 3)
 

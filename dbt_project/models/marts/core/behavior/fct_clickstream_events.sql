@@ -17,4 +17,7 @@ left join {{ ref('dim_product') }} p
       or (p.version_number = 1 and e.event_timestamp < p.dbt_valid_from))
 {% if is_incremental() %}
 where e.ingested_at >= (select coalesce(max(source_ingested_at), timestamp('1900-01-01')) from {{ this }})
+  and not exists (select 1 from {{ this }} existing
+                  where existing.event_id = e.event_id
+                    and existing.source_ingested_at = e.ingested_at)
 {% endif %}

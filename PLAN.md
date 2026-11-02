@@ -27,7 +27,7 @@
 | 7 | Dashboard & Kiểm chứng số liệu | Ngày 19–20 | Dashboard 5 trang theo sáu business marts và vận hành, số khớp với OLTP |
 | 8 | Nâng cấp & Đóng gói Portfolio | Ngày 21–22+ (tuỳ chọn) | Debezium/Kafka, README, demo, CV |
 
-**Trạng thái 02/11/2026:** Đã đăng ký 12 bảng Silver Delta từ snapshot local trong `ecommerce_cdc.silver` trên Databricks; hai lần `dbt build` toàn bộ Giai đoạn 4–5 đều PASS=122/122, 85 data tests xanh. Gold/marts đối soát khớp baseline PostgreSQL và fixture SCD2 cô lập trên Databricks đã tạo hai phiên bản. Job Silver chạy trực tiếp trên Databricks và chu trình thay đổi nguồn 1C → Bronze → Silver → Gold vẫn chưa kiểm chứng; lần MERGE thứ hai còn cập nhật lại mọi order dù nguồn đứng yên.
+**Trạng thái 02/11/2026:** Giai đoạn 4–5 đã qua `dbt build` 122/122 và đối soát baseline. DAG Airflow local chạy thử thành công toàn tuyến trên database 1C, prefix S3 và schema Databricks riêng: Silver và Gold đều có 99.461 orders; 122/122 model/test qua, quarantine bằng 0, Ops ghi nhận `success`. Bài thử payment âm đã khiến Great Expectations fail 3 lần, webhook local nhận alert và Gold giữ nguyên. Sau khi trả payment về 99,33, Silver local và bước publish + dbt chạy riêng đã phục hồi, `dbt build` lại đạt 122/122 và Gold không có payment âm hay order trùng. Docker Desktop dừng giữa lượt DAG phục hồi nên chưa có bằng chứng một lượt Airflow phục hồi hoàn chỉnh. Lịch chạy không người giám sát vẫn cần token Databricks riêng và webhook do chủ dự án cấu hình.
 
 ---
 
@@ -218,7 +218,8 @@
 
 ### Done khi
 - [x] SQL của 29 model Giai đoạn 4 chạy trên 12 bảng Silver Delta local; 5 singular SQL tests và fixture phát hiện duplicate item đã qua. Fixture hai phiên bản kiểm tra khóa SCD2 và giá bán, không thay thế lần chạy snapshot thật.
-- [x] `dbt build` xanh trên Databricks ở lần chạy đầu và lần chạy incremental tiếp theo (122/122 mỗi lần); Delta history của `fct_orders` xác nhận lần hai có `MERGE`, số dòng và doanh thu không tăng trùng. MERGE hiện cập nhật lại 99,441 order cùng mốc ingestion dù dữ liệu không đổi; cần tối ưu trước khi chạy theo lịch.
+- [x] `dbt build` xanh trên Databricks ở lần chạy đầu và lần chạy incremental tiếp theo (122/122 mỗi lần); Delta history của `fct_orders` xác nhận lần hai có `MERGE`, số dòng và doanh thu không tăng trùng. Lần chạy đó đã cập nhật lại 99,441 order cùng mốc ingestion dù dữ liệu không đổi; follow-up Giai đoạn 6 bên dưới xử lý việc này.
+- [x] Follow-up Giai đoạn 6: sáu fact incremental bỏ qua khóa đã có cùng `source_ingested_at`; full cloud `dbt build` tiếp theo đạt 122/122, Delta history cả sáu fact cho thấy 0 update/0 insert khi Silver không đổi.
 - [ ] **Test SCD2:** trên nguồn kiểm thử 1C riêng, đổi giá 1 product + đổi city 1 customer → chạy lại pipeline → snapshot có thêm phiên bản và đóng `dbt_valid_to` cũ; fact cũ giữ `item_price` và khóa phiên bản phù hợp. Snapshot RDS gốc hiện không có `current_price`/soft-delete nên không thể dùng nó để chứng minh thử nghiệm này.
 - [x] So sánh query history/profile trên `fct_orders` khi có/không có `purchase_date_key = 20180101`: đều đọc một file 10,111,873 byte từ cache; lần lượt 837 ms và 939 ms, số dòng đọc 74 và 99,441. Filter chưa prune file, nhưng ở kích thước hiện tại chưa có bằng chứng cần clustering/partition; đo lại khi scale.
 
@@ -264,26 +265,29 @@ Local verifier đã chạy 14 singular SQL tests cho business marts, phát hiệ
 
 ## Giai đoạn 6 — Orchestration & Data Quality (Ngày 17–18)
 
-**Mục tiêu:** Toàn bộ pipeline tự chạy theo lịch, fail thì biết ngay — không còn chạy tay từng script.
+**Mục tiêu:** Airflow local điều phối nguồn → Silver → Gold/sáu business marts trên Databricks; lỗi dữ liệu phải dừng trước Gold và có dấu vết vận hành. Token Databricks cho DAG được cấu hình riêng, không dùng OAuth đăng nhập tương tác.
 
 ### Việc cần làm
-- [ ] Viết Airflow DAG `ecommerce_cdc_daily` (+ bản rút gọn `ecommerce_cdc_hourly` cho CDC nếu muốn demo lag thấp):
+- [x] Viết Airflow DAG `ecommerce_cdc_daily` theo thứ tự:
   ```
-  ingest_api → cdc_extract → load_silver → dbt_snapshot → dbt_run → dbt_test → ge_checkpoint → end
-  generate_clickstream ─┘
+  cdc_extract → ingest_demo_clickstream ─┐
+  ingest_api (rates + mock campaign) ────┴→ sync_committed_bronze → load_silver → silver_quality_gate
+                                                                   ↓
+                           publish_silver → dbt build (snapshots, facts, sáu marts, tests) → record_run
   ```
-- [ ] Cấu hình cho DAG: `retries = 2`, `retry_delay = 5m`, alert khi fail qua email hoặc Slack webhook (dùng webhook test cũng được)
-- [ ] Great Expectations checkpoint trên Silver trước khi cho dbt chạy:
-  - `orders.customer_id` not null, `payments.amount >= 0`
-  - `clickstream.timestamp` không nằm trong tương lai
-  - Row count Silver mỗi ngày không giảm bất thường (>20% so với trung bình 7 ngày = cảnh báo)
-- [ ] Nếu GE fail → DAG dừng, **không** cho dữ liệu xấu chảy xuống Gold/dashboard
-- [ ] Ghi log/run metadata mỗi lần chạy: ngày, số dòng từng tầng Bronze/Silver/Gold, thời gian chạy, trạng thái — lưu vào 1 bảng Delta `ops_pipeline_runs` (bảng này nuôi trang Data Quality của dashboard ở Giai đoạn 7)
+- [x] Airflow local chạy được Python/uv, Java/Spark, PostgreSQL, S3 và dbt Databricks bằng token cung cấp lúc chạy. DAG đặt `retries = 2`, `retry_delay = 5m`, callback webhook khi task fail; cấu hình token không tương tác và webhook thật vẫn thuộc bước bật lịch unattended.
+- [x] Chạy thử 1C với prefix S3 và schema Databricks riêng (`PIPELINE_S3_PREFIX`, `DBT_SILVER_SCHEMA`, `DBT_TARGET_SCHEMA`), không trộn dữ liệu mô phỏng với snapshot RDS chính.
+- [x] Great Expectations checkpoint trên **Silver trước khi publish/đọc vào Gold**: `slv_orders.customer_id` không null, `slv_payments.payment_value >= 0`, `slv_clickstream_events.event_timestamp` không nằm trong tương lai. Ops ghi quarantine và cảnh báo khi tổng dòng Silver giảm >20% so với trung bình 7 lần chạy thành công cùng namespace; cảnh báo volume không tự chặn DAG.
+- [x] Khi checkpoint fail, `publish_silver` và `dbt_build` không chạy; Gold giữ 99.461 orders như trước lỗi. Lượt payment âm làm checkpoint fail cả ba lần, webhook local nhận alert. Bản ghi Ops của hai lượt bị gián đoạn đã được sửa về `failed`; vẫn cần chạy lại nhánh lỗi tuần tự để xác nhận trạng thái DagRun cuối.
+- [x] Ghi metadata mỗi lần chạy vào Delta `ops_pipeline_runs`: run ID, thời gian, trạng thái, lỗi, số dòng Bronze/Silver/Gold và từng business mart, số quarantine. Bảng này nuôi trang Data Quality/Ops Giai đoạn 7.
+- [x] Poll không đổi không upload lại: lần poll `orders` lặp trên nguồn 1C quét 0 và xuất bản 0 dòng. Sáu fact incremental bỏ qua cùng khóa/cùng ingestion time; lượt `dbt build` lại trên main có 0 MERGE updates/inserts. Chưa bật lịch unattended trước khi token và đường mạng được cấu hình.
 
 ### Done khi
-- [ ] Tắt toàn bộ thao tác tay, để DAG tự chạy theo lịch 1 lần: dữ liệu "ngày mới" từ `simulate_new_day` tự chảy tới Gold mà không cần can thiệp
-- [ ] Cố tình tạo 1 record lỗi ở nguồn (ví dụ order có `amount = -100`) → GE checkpoint fail, DAG dừng đúng chỗ, có alert, Gold không bị nhiễm dữ liệu lỗi
-- [ ] Chạy lại DAG cùng 1 ngày 2 lần liên tiếp → không duplicate ở bất kỳ tầng nào
+- [x] Chạy DAG với nguồn 1C cô lập: Silver và Gold cùng 99.461 orders, sáu marts có tổng 150.672 dòng, `dbt build` 122/122. S3 và Databricks của lượt thử dùng prefix/schema riêng; bảng Silver chính vẫn trỏ về vị trí cũ.
+- [ ] Tạo một `order_payments.payment_value < 0` trong nguồn thử → checkpoint fail, DAG dừng đúng chỗ, có alert, Gold không đổi.
+- [ ] Chạy lại cùng logical date hai lần → không trùng khóa nguồn, Silver, Gold hay marts; `ops_pipeline_runs` truy vết được cả kết quả chạy lại.
+
+**Bằng chứng phục hồi từng bước:** sau khi sửa payment 1C về 99,33, Silver local có 103.906 payment, không có khóa trùng hay giá trị âm. Publish Silver lên schema thử thành công, `dbt build` đạt 122/122; Gold có 99.461 orders và 103.906 payments, payment thử là 99,33 và không còn payment âm. Hai lượt Airflow bị gián đoạn có Ops `failed`, không ghi nhầm `success`. Tiêu chí hai lượt Airflow thành công cùng logical date còn mở vì `dags test` đồng thời đã gây xung đột SQLite và Docker Desktop dừng trong lượt chạy tuần tự sau đó.
 
 ---
 

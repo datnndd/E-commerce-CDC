@@ -17,4 +17,7 @@ join {{ ref('dim_customer') }} c
       or (c.version_number = 1 and o.order_purchase_timestamp < c.dbt_valid_from))
 {% if is_incremental() %}
 where o.source_ingested_at >= (select coalesce(max(source_ingested_at), timestamp('1900-01-01')) from {{ this }})
+  and not exists (select 1 from {{ this }} existing
+                  where existing.order_id = o.order_id
+                    and existing.source_ingested_at = o.source_ingested_at)
 {% endif %}

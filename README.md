@@ -105,11 +105,17 @@ The main RDS source needs the `cdc_watermark` table from revision `d79b3fd3ea12`
 uv run alembic -c sources/oltp/alembic.ini current
 ```
 
-Expect at least revision `d79b3fd3ea12`, with `table_name`, `last_updated_at`, and `last_run_at`. The later `6c4d9b7e2a11` boundary-hash migration remains in history but this 15-minute-overlap extractor does not require it. The separate Stage 1C migration remains unapplied on the main source; do not use `upgrade head` there. An isolated database that already includes 1C can use merge revision `94f012a6c7b3`.
+The current extractor also requires `last_boundary_hash` from `6c4d9b7e2a11`. If the main source is still at `d79b3fd3ea12`, apply **only** this revision before running the updated extractor:
+
+```bash
+uv run --frozen alembic -c sources/oltp/alembic.ini upgrade 6c4d9b7e2a11
+```
+
+This adds CDC metadata but does not apply Stage 1C source changes. Do not use `upgrade head` on the frozen main source. An isolated 1C database can use its merge revision.
 
 ### Stage 2: PostgreSQL to S3 Bronze
 
-On EC2, set `S3_BUCKET` in `.env` to the project bucket name. The instance role needs `s3:PutObject` on `bronze/postgres_oltp/*`. The bucket is in `ap-southeast-1`. With `.env` pointing to the RDS source at `d79b3fd3ea12` (or the boundary-hash-only `6c4d9b7e2a11`, without Stage 1C), run from the repository root:
+On EC2, set `S3_BUCKET` in `.env` to the project bucket name. The instance role needs `s3:PutObject` on `bronze/postgres_oltp/*`. The bucket is in `ap-southeast-1`. With `.env` pointing to the RDS source at `6c4d9b7e2a11` (without Stage 1C), run from the repository root:
 
 ```bash
 uv sync --frozen
@@ -118,16 +124,16 @@ uv run --frozen python -m ingestion.cdc_extract
 
 Use `--table orders` to check one table first. Each poll with source rows in its window writes `bronze/postgres_oltp/<table>/load_date=YYYY-MM-DD/run_id=YYYYMMDDTHHMMSSffffff/part-0000.parquet` (rolling to `part-0001.parquet`, etc. every 500,000 rows), then `_manifest.json` as the final object. `load_date` is the UTC ingestion date; `run_id` is a UTC start timestamp with microseconds so nearby runs have separate paths. The manifest retains the exact source-time window. Silver reads only runs whose manifest has `status: committed`, and only the files listed in that manifest. The manifest records the run ID, source, load type, timestamp window, physical row count, per-file size and SHA-256, and start/finish times. The first run has `load_type: snapshot` and a null lower boundary; later runs are `delta`. Each Parquet row includes `ingested_at` and `source_table`.
 
-For each later poll, the exclusive lower bound is `last_updated_at - 15 minutes` and the inclusive upper bound is the source's current maximum `updated_at`. The first poll takes a full snapshot. This temporary overlap re-reads recent rows even when the source is unchanged; every such poll can produce a new run, so Silver must deduplicate by source key and row version/hash. The source watermark advances only after the committed manifest uploads. A failed attempt can leave an unreferenced Parquet object without a manifest; Silver ignores that run. If the manifest succeeds but the database commit fails, a retry can leave two committed runs with overlapping rows. Polling still misses physical deletes and writes backdated more than 15 minutes below the saved watermark. Orphan cleanup needs a separate retention policy and job; this extractor does not delete S3 objects.
+For each later poll, the exclusive lower bound is `last_updated_at - 15 minutes` and the inclusive upper bound is the source's current maximum `updated_at`. The first poll takes a full snapshot. The extractor fingerprints all rows in the 15-minute overlap ending at the current maximum; if both the maximum and fingerprint are unchanged, it skips S3 upload and only records `last_run_at`. A new row at the same timestamp or anywhere inside the overlap changes that fingerprint, so the window is written again. Silver deduplicates overlapping rows by source key and row version/hash. The source watermark advances only after a committed manifest uploads. A failed attempt can leave an unreferenced Parquet object without a manifest; Silver ignores that run. If the manifest succeeds but the database commit fails, a retry can leave two committed runs with overlapping rows. Polling still misses physical deletes and writes backdated more than 15 minutes below the saved watermark. Orphan cleanup needs a separate retention policy and job; this extractor does not delete S3 objects.
 
 #### Next EC2/RDS check
 
 1. Bring the EC2 checkout to the same revision as the local checkout before running the extractor; a Git bundle procedure is below for commits that are not on the remote. Keep the existing EC2 `.env` private and intact.
-2. Confirm `.env` points to the intended RDS database and project S3 bucket, with `AWS_REGION=ap-southeast-1` and no `AWS_PROFILE` or AWS key values on EC2. Check `uv run --frozen alembic -c sources/oltp/alembic.ini current`; the main RDS source was last reported at `d79b3fd3ea12` and must not include the Stage 1C migration.
+2. Confirm `.env` points to the intended RDS database and project S3 bucket, with `AWS_REGION=ap-southeast-1` and no `AWS_PROFILE` or AWS key values on EC2. Check `uv run --frozen alembic -c sources/oltp/alembic.ini current`; if the main RDS source is still at `d79b3fd3ea12`, upgrade only to `6c4d9b7e2a11` as above. It must not include the Stage 1C migration.
 3. Run `uv run --frozen python -m ingestion.cdc_extract --table orders` once. In S3, inspect `bronze/postgres_oltp/orders/load_date=<UTC date>/run_id=<run ID>/`: it should contain `part-0000.parquet` and `_manifest.json`. Confirm the manifest has `status: committed`, names that Parquet file, and records its row count and byte size. Download the Parquet file and compare its SHA-256 with the manifest. On the frozen first snapshot, `row_count` should equal `SELECT count(*) FROM orders`; `window.upper_boundary_inclusive` should equal `SELECT max(updated_at) FROM orders`. Check `SELECT table_name, last_updated_at, last_run_at FROM cdc_watermark WHERE table_name = 'orders'` after the upload.
-4. Once the single-table result is correct, run `uv run --frozen python -m ingestion.cdc_extract` for all nine OLTP tables. Check the other eight tables' first-snapshot manifest counts against their source counts. The second `orders` poll is a delta run and intentionally replays its 15-minute overlap, so compare its manifest to that window rather than the whole table. Keep the main OLTP snapshot frozen until Bronze/Silver/Gold reconciliation; use the isolated `*_1c_test` database for simulator changes.
+4. Once the single-table result is correct, run `uv run --frozen python -m ingestion.cdc_extract` for all nine OLTP tables. Check the other eight tables' first-snapshot manifest counts against their source counts. An unchanged second poll creates no manifest; adding a row inside the overlap creates a delta manifest for that window. Keep the main OLTP snapshot frozen until Bronze/Silver/Gold reconciliation; use the isolated `*_1c_test` database for simulator changes.
 
-The user reports an EC2/RDS `orders` upload, but its RDS watermark and S3 manifest have not been independently reconciled. PostgreSQL extraction has passed focused tests against disposable PostgreSQL and fake S3. A local nine-table snapshot was reconciled against the test bucket. Recurring polls of the seven tables whose Olist rows all share one `snapshot_at` currently reupload those entire tables; fix that before scheduling extraction.
+The user reports an EC2/RDS `orders` upload, but its RDS watermark and S3 manifest have not been independently reconciled. PostgreSQL extraction has passed focused tests against disposable PostgreSQL and fake S3. A local nine-table snapshot was reconciled against the test bucket. The overlap fingerprint now prevents repeated upload when a source table is unchanged; it has not yet been run against RDS with the new migration.
 
 ### Stage 2: clickstream and API Bronze
 
@@ -238,7 +244,7 @@ On 2026-11-02, both full cloud builds passed 122/122 nodes with 85 data tests an
 
 ![dbt lineage from Silver through the Daily Sales mart](docs/images/dbt-lineage-sales.png)
 
-An isolated Databricks Silver copy proved snapshot behavior: changing one customer's city and one product's `current_price` created a second version of each with the old `dbt_valid_to` closed. The historical order retained its original customer/product keys and BRL 44.99 item price while the new catalog price was BRL 54.99. The main Silver/OLTP snapshots were not changed. A full Stage 1C source → Bronze → Silver → dbt test still remains; the frozen main Silver snapshot has no `products.current_price` or soft-delete fields. The second `fct_orders` MERGE updated all 99,441 unchanged rows because the current `>=` ingestion-time boundary replays the entire snapshot batch. It is correct by row count but should be optimized before daily scheduling.
+An isolated Databricks Silver copy proved snapshot behavior: changing one customer's city and one product's `current_price` created a second version of each with the old `dbt_valid_to` closed. The historical order retained its original customer/product keys and BRL 44.99 item price while the new catalog price was BRL 54.99. The main Silver/OLTP snapshots were not changed. A full Stage 1C source → Bronze → Silver → dbt test still remains; the frozen main Silver snapshot has no `products.current_price` or soft-delete fields. The earlier second `fct_orders` MERGE updated all 99,441 unchanged rows. Stage 6 added a same-key/same-ingestion-time exclusion to the six incremental facts; a later full cloud build passed 122/122, and Delta history showed zero updated and zero inserted rows for all six facts on unchanged Silver.
 
 ### Stage 5: business marts
 
@@ -253,6 +259,33 @@ docker run --rm --mount "type=bind,source=$((Get-Location).Path),target=/workspa
 ```
 
 The local run checked all eight dimension keys, six mart grains, fact totals, RFM scores/ties, and funnel bounds; it rejected a duplicate sales-row fixture. On Databricks, all six marts and their generic/singular tests passed in both full builds, and their row counts match local proof. Delivered item revenue in `mart_daily_sales` is BRL 13,221,498.11, matching the independent PostgreSQL baseline in all 12 calendar months. For 2018-01-01 in `America/Sao_Paulo`, local PostgreSQL and Databricks both returned 81 items, BRL 6,948.21 item price, and BRL 6,818.31 delivered item revenue.
+
+### Stage 6: local Airflow to Databricks
+
+The `ecommerce_cdc_daily` DAG is paused by default. It runs PostgreSQL CDC, the current BRL/USD API, the synthetic campaign fixture, and deterministic demo clickstream from the committed RDS snapshots. It then downloads only manifest-committed Bronze files, runs local Spark Silver, verifies keys/joins and three Great Expectations checks, publishes Delta Silver to `silver/pipeline_live/` on S3, and runs `dbt build` for the whole project. A failed Silver check prevents publication and Gold execution. The DAG records status and layer/mart counts in `ecommerce_cdc.ops.ops_pipeline_runs`; a configured Slack-compatible webhook receives task-failure alerts.
+
+Configure the ignored `.env` using `.env.example`: `AIRFLOW_S3_BUCKET` must be the **project bucket covered by the Databricks external location**, even if `S3_BUCKET` for other local commands points to a test bucket. Also set AWS credentials (or a local AWS profile), PostgreSQL settings, `DBT_DATABRICKS_HOST`, `DBT_DATABRICKS_HTTP_PATH`, `DBT_CATALOG`, `DBT_SILVER_SCHEMA`, `DBT_TARGET_SCHEMA`, `DATABRICKS_TOKEN`, and `AIRFLOW_ALERT_WEBHOOK_URL`. `airflow/dbt_profile/profiles.yml` reads the token from the environment. The previous interactive OAuth profile is for manual dbt work; it is not used by this DAG. Do not put the token or webhook URL in Git.
+
+The RDS database is private. To use it from local Airflow, provide network access through an existing SSH tunnel or VPN. For an SSH local port forward, set `AIRFLOW_POSTGRES_PORT` to the forwarded local port and `AIRFLOW_POSTGRES_HOST=host.docker.internal`; the Airflow container then connects through the host. For local Compose PostgreSQL, use its published port and the same host setting. Set `AIRFLOW_POSTGRES_DB` to choose the Airflow source without changing the database used by other local commands. The source database must have the `6c4d9b7e2a11` CDC metadata revision. Do not point this DAG at the main frozen source for a Stage 1C simulator run.
+
+For the isolated Stage 1C rehearsal, point PostgreSQL at the `*_1c_test` database and set `PIPELINE_S3_PREFIX=stage6_1c_test`, `DBT_SILVER_SCHEMA=silver_validation_1c`, and `DBT_TARGET_SCHEMA=validation_1c` together in the ignored `.env`. Use the existing project bucket and catalog; the namespace adds separate `stage6_1c_test/bronze/` and `stage6_1c_test/silver/` S3 paths, separate local cache directories, and separate Databricks Silver/Gold/snapshot schemas. The DAG refuses an isolated prefix paired with the main Silver or Gold schema. Run the simulator only against that isolated database before triggering the DAG, and restart Airflow after changing `.env`. The synthetic clickstream task waits for the CDC snapshot and uses only the isolated prefix.
+
+After the connection and credentials are ready, check the runtime without starting a pipeline:
+
+```powershell
+docker compose up -d --build airflow
+docker compose exec airflow airflow dags list
+docker compose exec airflow airflow dags list-import-errors
+docker compose exec airflow bash -lc "uv run --frozen dbt debug --project-dir /workspace/dbt_project --profiles-dir /workspace/airflow/dbt_profile"
+```
+
+Then trigger one manual run in the Airflow UI at `http://127.0.0.1:8080`; inspect the task graph and `ops_pipeline_runs` before unpausing the daily schedule. `record_failure` writes failure status when any upstream task fails and leaves the DAG failed. An unchanged CDC poll creates no new manifest; a repeated clickstream/campaign demo run still writes new Bronze run IDs but Silver deduplicates stable event/campaign keys. `publish_silver` uploads data files before Delta logs and refuses to overwrite a changed published file. It registers the 12 Silver tables and `silver_quarantine` only after every upload has been verified.
+
+On 2026-11-02, `airflow dags test ecommerce_cdc_daily 2026-11-02` ran end to end against the isolated `ecommerce_1c_test` database, `stage6_1c_test/` S3 prefix, and `silver_validation_1c`/`validation_1c` Databricks schemas. Bronze → Silver → Gold produced 99,461 orders in both Silver and Gold; all 122 dbt resources passed, quarantine was zero, and Ops recorded success with 1,551,109 Bronze/Silver rows and 150,672 business-mart rows. The main Silver table location remained unchanged. A repeated `orders` poll scanned and published zero rows. The test used a short-lived interactive OAuth token supplied only to the temporary container. For unattended daily runs, provide a separate noninteractive Databricks token and real alert webhook, arrange private-RDS access, and apply the targeted CDC metadata migration to that source.
+
+An isolated negative-payment test made `slv_payments` fail all three GX attempts; Airflow did not publish Silver or run dbt, the local webhook received an alert, and the existing Gold order count stayed at 99,461. The payment was restored to 99.33 in the isolated source. A concurrent `airflow dags test` with the same logical date caused a SQLite metadata conflict, and Docker Desktop stopped during the subsequent recovery run after the GX gate passed. Both interrupted Ops rows were marked `failed` with their causes. Run further `dags test` commands **sequentially** and recheck the final DagRun state on a stable Docker runtime. The scheduled, unattended path remains unverified.
+
+The recovered local Silver has 103,906 payments, zero duplicate payment keys, zero negative values, and the restored payment at 99.33. Publishing that Silver from local code succeeded; a separate full dbt build passed 122/122. Databricks Gold now has 99,461 orders and 103,906 payments, with no negative payments. The recovery was completed through individual publish/dbt commands after the Docker interruption; it is not evidence of a second completed Airflow DagRun.
 
 ## Stage 0 cloud status
 

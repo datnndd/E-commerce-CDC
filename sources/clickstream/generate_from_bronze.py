@@ -9,12 +9,12 @@ from pathlib import Path
 
 import pyarrow.parquet as pq
 
-from ingestion.s3 import s3_client_and_bucket
+from ingestion.s3 import pipeline_s3_prefix, s3_client_and_bucket
 from sources.clickstream.generate import DEVICES, EVENT_TYPES, UTM_SOURCES
 
 
 def snapshot_rows(s3, bucket: str, table: str, columns: list[str]) -> list[dict]:
-    prefix = f"bronze/postgres_oltp/{table}/"
+    prefix = pipeline_s3_prefix() + f"bronze/postgres_oltp/{table}/"
     manifests = []
     for page in s3.get_paginator("list_objects_v2").paginate(Bucket=bucket, Prefix=prefix):
         for obj in page.get("Contents", []):

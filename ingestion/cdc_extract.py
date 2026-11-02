@@ -13,7 +13,7 @@ import psycopg
 from psycopg import IsolationLevel, sql
 from sqlalchemy import BigInteger, Boolean, DateTime, Float, Integer, Numeric, String
 
-from ingestion.s3 import s3_client_and_bucket
+from ingestion.s3 import pipeline_s3_prefix, s3_client_and_bucket
 from sources.oltp.load_olist import FILES, connection_settings, database_settings
 
 
@@ -114,6 +114,24 @@ def utc_text(value):
     return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def overlap_hash(connection, table_name, model, upper):
+    """Fingerprint rows in the 15-minute overlap before the newest source timestamp."""
+    if upper is None:
+        return None
+    primary_key = sql.SQL(", ").join(sql.Identifier(column.name) for column in model.__table__.primary_key.columns)
+    query = sql.SQL("SELECT * FROM {} WHERE updated_at > %s AND updated_at <= %s "
+                    "ORDER BY updated_at, {}").format(sql.Identifier(table_name), primary_key)
+    digest = hashlib.sha256()
+    with connection.cursor(name=f"overlap_{table_name}") as cursor:
+        cursor.execute(query, (upper - timedelta(minutes=15), upper))
+        while rows := cursor.fetchmany(BATCH_ROWS):
+            for row in rows:
+                data = json.dumps(row, default=str, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+                digest.update(len(data).to_bytes(8, "big"))
+                digest.update(data)
+    return digest.hexdigest()
+
+
 def extract_table(settings, s3, bucket, table_name, max_file_rows=MAX_FILE_ROWS):
     started_at = datetime.now(timezone.utc)
     run_id = started_at.strftime("%Y%m%dT%H%M%S%f")
@@ -128,17 +146,23 @@ def extract_table(settings, s3, bucket, table_name, max_file_rows=MAX_FILE_ROWS)
                     (table_name,),
                 )
                 cursor.execute(
-                    "SELECT last_updated_at FROM cdc_watermark WHERE table_name = %s FOR UPDATE",
+                    "SELECT last_updated_at, last_boundary_hash FROM cdc_watermark "
+                    "WHERE table_name = %s FOR UPDATE",
                     (table_name,),
                 )
-                last_updated_at = cursor.fetchone()[0]
+                last_updated_at, last_boundary_hash = cursor.fetchone()
                 cursor.execute(sql.SQL("SELECT max(updated_at) FROM {}").format(sql.Identifier(table_name)))
                 max_updated_at = cursor.fetchone()[0]
                 if last_updated_at and max_updated_at and max_updated_at < last_updated_at:
                     raise ValueError(f"{table_name}: source updated_at moved behind its watermark")
 
             lower = last_updated_at - timedelta(minutes=15) if last_updated_at else None
-            if max_updated_at is not None:
+            current_boundary_hash = overlap_hash(
+                connection, table_name, TABLES[table_name], max_updated_at
+            )
+            unchanged = (last_updated_at is not None and max_updated_at == last_updated_at
+                         and current_boundary_hash == last_boundary_hash)
+            if max_updated_at is not None and not unchanged:
                 chunks, scanned_rows = write_parquet(
                     connection, TABLES[table_name], table_name, lower, max_updated_at, started_at, max_file_rows,
                 )
@@ -147,7 +171,8 @@ def extract_table(settings, s3, bucket, table_name, max_file_rows=MAX_FILE_ROWS)
 
         if chunks:
             day = started_at.strftime("%Y-%m-%d")
-            prefix = f"bronze/postgres_oltp/{table_name}/load_date={day}/run_id={run_id}/"
+            prefix = (pipeline_s3_prefix()
+                      + f"bronze/postgres_oltp/{table_name}/load_date={day}/run_id={run_id}/")
             manifest_files = []
             for index, (path, file_count) in enumerate(chunks):
                 file_name = f"part-{index:04d}.parquet"
@@ -188,9 +213,9 @@ def extract_table(settings, s3, bucket, table_name, max_file_rows=MAX_FILE_ROWS)
         with connection.cursor() as cursor:
             cursor.execute(
                 "UPDATE cdc_watermark SET last_updated_at = COALESCE(%s, last_updated_at), "
-                "last_run_at = %s "
+                "last_boundary_hash = %s, last_run_at = %s "
                 "WHERE table_name = %s",
-                (max_updated_at, started_at, table_name),
+                (max_updated_at, current_boundary_hash, started_at, table_name),
             )
     print(
         f"{table_name}: scanned {scanned_rows} rows, published {published_rows} rows "

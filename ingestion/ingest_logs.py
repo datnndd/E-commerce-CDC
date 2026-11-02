@@ -8,14 +8,14 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from ingestion.s3 import s3_client_and_bucket
+from ingestion.s3 import pipeline_s3_prefix, s3_client_and_bucket
 
 
 def ingest_logs(source: Path, s3, bucket: str, started_at: datetime | None = None) -> dict:
     started_at = started_at or datetime.now(timezone.utc)
     run_id = started_at.strftime("%Y%m%dT%H%M%S%f")
     prefix = (
-        f"bronze/clickstream/dt={started_at:%Y-%m-%d}/hour={started_at:%H}/"
+        pipeline_s3_prefix() + f"bronze/clickstream/dt={started_at:%Y-%m-%d}/hour={started_at:%H}/"
         f"run_id={run_id}/"
     )
     with tempfile.TemporaryDirectory() as temp_dir:

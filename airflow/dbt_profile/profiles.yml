@@ -1,0 +1,12 @@
+ecommerce_databricks:
+  target: airflow
+  outputs:
+    airflow:
+      type: databricks
+      auth_type: pat
+      host: "{{ env_var('DBT_DATABRICKS_HOST') }}"
+      http_path: "{{ env_var('DBT_DATABRICKS_HTTP_PATH') }}"
+      token: "{{ env_var('DATABRICKS_TOKEN') }}"
+      database: "{{ env_var('DBT_CATALOG') }}"
+      schema: "{{ env_var('DBT_TARGET_SCHEMA', 'analytics_dev') }}"
+      threads: 2

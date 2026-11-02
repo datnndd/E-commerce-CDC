@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from urllib.error import HTTPError
 from urllib.request import urlopen
 
-from ingestion.s3 import s3_client_and_bucket
+from ingestion.s3 import pipeline_s3_prefix, s3_client_and_bucket
 
 
 def fetch_json(url: str) -> bytes:
@@ -33,8 +33,12 @@ def ingest_api(source: str, url: str, s3, bucket: str, started_at: datetime | No
         raise ValueError("source must be exchange_rate or campaign")
     started_at = started_at or datetime.now(timezone.utc)
     body = fetch_json(url)
+    document = json.loads(body)
+    row_count = len(document) if isinstance(document, list) else (
+        len(document["campaigns"]) if source == "campaign" else 1
+    )
     run_id = started_at.strftime("%Y%m%dT%H%M%S%f")
-    prefix = f"bronze/api/{source}/dt={started_at:%Y-%m-%d}/run_id={run_id}/"
+    prefix = pipeline_s3_prefix() + f"bronze/api/{source}/dt={started_at:%Y-%m-%d}/run_id={run_id}/"
     file_name = "response.json"
     s3.put_object(Bucket=bucket, Key=prefix + file_name, Body=body, ContentType="application/json")
     manifest = {
@@ -43,6 +47,7 @@ def ingest_api(source: str, url: str, s3, bucket: str, started_at: datetime | No
         "dataset": source,
         "load_type": "append",
         "status": "committed",
+        "row_count": row_count,
         "files": [{
             "name": file_name,
             "size_bytes": len(body),

@@ -16,6 +16,7 @@ __pycache__/
 target/
 dbt_packages/
 dbt_project/profiles.yml
+airflow/dbt_profile/.user.yml
 logs/
 airflow.db
 simple_auth_manager_passwords.json.generated

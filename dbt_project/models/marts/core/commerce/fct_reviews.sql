@@ -10,4 +10,7 @@ join {{ ref('fct_orders') }} o on r.order_id = o.order_id
 {% if is_incremental() %}
 where greatest(r.ingested_at, o.source_ingested_at) >=
       (select coalesce(max(source_ingested_at), timestamp('1900-01-01')) from {{ this }})
+  and not exists (select 1 from {{ this }} existing
+                  where existing.review_row_id = r.review_row_id
+                    and existing.source_ingested_at = greatest(r.ingested_at, o.source_ingested_at))
 {% endif %}

@@ -1,6 +1,7 @@
 """S3 credentials and bucket settings shared by Bronze ingesters."""
 
 import os
+import re
 from pathlib import Path
 
 import boto3
@@ -9,6 +10,17 @@ from dotenv import dotenv_values
 
 ROOT = Path(__file__).resolve().parents[1]
 AWS_KEY_NAMES = ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN")
+
+
+def pipeline_s3_prefix() -> str:
+    """Keep isolated Stage 1C runs outside the main Bronze/Silver prefixes."""
+    local = dotenv_values(ROOT / ".env")
+    value = (os.environ.get("PIPELINE_S3_PREFIX") or local.get("PIPELINE_S3_PREFIX") or "").strip("/")
+    if not value:
+        return ""
+    if not re.fullmatch(r"[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*", value):
+        raise ValueError("PIPELINE_S3_PREFIX must contain only safe path segments")
+    return value + "/"
 
 
 def s3_session(local):

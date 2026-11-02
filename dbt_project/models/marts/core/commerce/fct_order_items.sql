@@ -18,4 +18,7 @@ join {{ ref('dim_seller') }} s on i.seller_id = s.seller_id
 {% if is_incremental() %}
 where greatest(i.ingested_at, o.source_ingested_at) >=
       (select coalesce(max(source_ingested_at), timestamp('1900-01-01')) from {{ this }})
+  and not exists (select 1 from {{ this }} existing
+                  where existing.order_id = i.order_id and existing.order_item_id = i.order_item_id
+                    and existing.source_ingested_at = greatest(i.ingested_at, o.source_ingested_at))
 {% endif %}

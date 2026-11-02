@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import os
 import unittest
 from datetime import datetime, timezone
 from io import BytesIO
@@ -26,6 +27,7 @@ class IngestApiTest(unittest.TestCase):
         self.assertEqual(second.kwargs["Key"], prefix + "_manifest.json")
         self.assertEqual(json.loads(second.kwargs["Body"]), manifest)
         self.assertEqual(manifest["status"], "committed")
+        self.assertEqual(manifest["row_count"], 1)
         self.assertEqual(manifest["files"][0]["size_bytes"], len(body))
         self.assertEqual(manifest["files"][0]["sha256"], hashlib.sha256(body).hexdigest())
 
@@ -36,6 +38,15 @@ class IngestApiTest(unittest.TestCase):
                 self.assertEqual(fetch_json("http://localhost/data"), b'{"ok":true}')
         self.assertEqual(open_url.call_count, 4)
         self.assertEqual([call.args[0] for call in sleep.call_args_list], [1, 2, 4])
+
+    def test_isolated_prefix_keeps_api_out_of_main_bronze(self):
+        s3 = Mock()
+        with patch.dict(os.environ, {"PIPELINE_S3_PREFIX": "stage6_1c_test"}), \
+             patch("ingestion.ingest_api.fetch_json", return_value=b'[{"date":"2026-11-02"}]'):
+            ingest_api("exchange_rate", "http://localhost/rates", s3, "test-bucket")
+        keys = [call.kwargs["Key"] for call in s3.put_object.call_args_list]
+        self.assertEqual(len(keys), 2)
+        self.assertTrue(all(key.startswith("stage6_1c_test/bronze/api/exchange_rate/") for key in keys))
 
     def test_invalid_response_or_permanent_http_error_never_uploads(self):
         s3 = Mock()

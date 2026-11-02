@@ -17,16 +17,35 @@ services:
       retries: 10
 
   airflow:
-    image: apache/airflow:3.3.2-python3.13
+    build:
+      context: .
+      dockerfile: docker/airflow.Dockerfile
+    image: ecommerce-airflow-local:stage6
     command: standalone
+    env_file: .env
     environment:
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
       AIRFLOW__CORE__PARALLELISM: "2"
+      AIRFLOW__CORE__DAGS_FOLDER: /workspace/airflow/dags
+      POSTGRES_HOST: ${AIRFLOW_POSTGRES_HOST:-host.docker.internal}
+      POSTGRES_PORT: ${AIRFLOW_POSTGRES_PORT:-${POSTGRES_PORT:-5432}}
+      POSTGRES_DB: ${AIRFLOW_POSTGRES_DB:-${POSTGRES_DB:-ecommerce}}
+      S3_BUCKET: ${AIRFLOW_S3_BUCKET:-${S3_BUCKET:-}}
+      AIRFLOW_S3_BUCKET: ${AIRFLOW_S3_BUCKET:-}
+      PIPELINE_S3_PREFIX: ${PIPELINE_S3_PREFIX:-}
+      DBT_DATABRICKS_HOST: ${DBT_DATABRICKS_HOST:-}
+      DBT_DATABRICKS_HTTP_PATH: ${DBT_DATABRICKS_HTTP_PATH:-}
+      DBT_CATALOG: ${DBT_CATALOG:-}
+      DBT_SILVER_SCHEMA: ${DBT_SILVER_SCHEMA:-silver}
+      DBT_TARGET_SCHEMA: ${DBT_TARGET_SCHEMA:-analytics_dev}
+      DATABRICKS_TOKEN: ${DATABRICKS_TOKEN:-}
+      AIRFLOW_ALERT_WEBHOOK_URL: ${AIRFLOW_ALERT_WEBHOOK_URL:-}
+      UV_PROJECT_ENVIRONMENT: /opt/project-venv
     ports:
       - "127.0.0.1:${AIRFLOW_PORT:-8080}:8080"
     volumes:
       - airflow_data:/opt/airflow
-      - ./airflow/dags:/opt/airflow/dags
+      - ./:/workspace
 
 volumes:
   postgres18_data:
