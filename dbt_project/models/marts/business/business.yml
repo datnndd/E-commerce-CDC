@@ -1,0 +1,52 @@
+version: 2
+
+models:
+  - name: mart_daily_sales
+    description: One row per Sao Paulo purchase date and customer state; revenue includes delivered item prices only.
+    columns:
+      - name: purchase_date_key
+        data_tests: [not_null]
+      - name: customer_state
+        data_tests: [not_null]
+  - name: mart_product_performance
+    description: Delivered item performance by product, seller, and category at sale time.
+    columns:
+      - name: product_id
+        data_tests: [not_null]
+      - name: seller_id
+        data_tests: [not_null]
+      - name: category_key
+        data_tests: [not_null]
+  - name: mart_customer_rfm
+    description: One delivered-order RFM segment per unique shopper at a data-relative as_of_date.
+    columns:
+      - name: customer_unique_id
+        data_tests: [not_null, unique]
+      - name: segment
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Champions', 'Loyal', 'Potential', 'At Risk', 'Churned']
+  - name: mart_funnel_daily
+    description: Synthetic order-derived sessions by Sao Paulo start date, device, and channel.
+    columns:
+      - name: session_date_key
+        data_tests: [not_null]
+      - name: device
+        data_tests: [not_null]
+      - name: channel_key
+        data_tests: [not_null]
+  - name: mart_payment_mix_daily
+    description: Payment records by the related order purchase date and payment type; this is not a payment event date.
+    columns:
+      - name: order_purchase_date_key
+        data_tests: [not_null]
+      - name: payment_type
+        data_tests: [not_null]
+  - name: mart_order_experience_daily
+    description: Delivered order cohorts by purchase date and customer state; reviews are averaged per order first.
+    columns:
+      - name: purchase_date_key
+        data_tests: [not_null]
+      - name: customer_state
+        data_tests: [not_null]

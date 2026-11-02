@@ -22,6 +22,10 @@ models:
         +materialized: table
         +file_format: delta
         +schema: gold
+      business:
+        +materialized: table
+        +file_format: delta
+        +schema: gold
 
 snapshots:
   ecommerce_cdc:

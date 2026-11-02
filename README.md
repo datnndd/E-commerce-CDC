@@ -1,6 +1,6 @@
 # E-commerce CDC Lakehouse
 
-Portfolio project in progress. The target pipeline is PostgreSQL OLTP → S3 Bronze → Databricks Delta Silver/Gold with dbt-databricks → dashboard, orchestrated by Airflow. Docker Compose configures PostgreSQL 18.6 and Airflow 3.3.2 for local development. Olist loading, the isolated OLTP simulator, Bronze extraction, local Silver, and local Gold SQL proof are implemented; Databricks materialization and end-to-end cloud reconciliation remain unverified. See [PLAN.md](PLAN.md).
+Portfolio project in progress. The target pipeline is PostgreSQL OLTP → S3 Bronze → Databricks Delta Silver/Gold with dbt-databricks → dashboard, orchestrated by Airflow. Docker Compose configures PostgreSQL 18.6 and Airflow 3.3.2 for local development. Olist loading, the isolated OLTP simulator, Bronze extraction, local Silver, and local Gold/business-mart SQL proof are implemented; Databricks materialization and end-to-end cloud reconciliation remain unverified. See [PLAN.md](PLAN.md).
 
 ## Stage 0: local setup
 
@@ -234,6 +234,20 @@ uv run --frozen dbt docs generate --project-dir dbt_project --profiles-dir dbt_p
 ```
 
 The second build is the incremental MERGE check. Before declaring Stage 4 complete, also run the isolated Stage 1C price/address change through Silver and dbt snapshots and verify old fact keys and `dbt_valid_to`. The frozen main Silver snapshot has no `products.current_price` or customer soft-delete columns; dbt cannot invent those source fields or reconstruct product/customer attributes from 2016–2018.
+
+### Stage 5: local business marts
+
+`dbt_project/models/marts/business/` contains six tables: `mart_daily_sales` (purchase date × customer state), `mart_product_performance` (product × seller × sale-time category), `mart_customer_rfm` (unique shopper), `mart_funnel_daily` (session start date × device × channel), `mart_payment_mix_daily` (related order purchase date × payment type), and `mart_order_experience_daily` (delivered-order purchase cohort × customer state). Sales and RFM use delivered item price; payment value remains a separate payment measure. Reviews are averaged per order before the experience join. The funnel is from synthetic order-derived sessions, and no refund, product-level rating, or campaign attribution KPI is inferred.
+
+RFM uses an `as_of_date` one day after the latest delivered purchase in the available data. Tie-aware percentile ranks give equal recency, frequency, or monetary values equal 1–5 scores. The five segment rules and their priority are recorded in [PLAN.md](PLAN.md). As new delivered orders arrive, the current RFM mart is recomputed; it is not a historical segment snapshot.
+
+Run the full Stage 4–5 SQL proof locally:
+
+```powershell
+docker run --rm --mount "type=bind,source=$((Get-Location).Path),target=/workspace" ecommerce-silver-local uv run --frozen python -m spark_jobs.verify_gold --silver-root /workspace/logs/local_silver --project-dir /workspace/dbt_project --baseline /workspace/docs/baselines/olist_20261023T032906Z_99dc95d7.json --business
+```
+
+This local run checked all eight dimension keys, all six mart grains, totals against the corresponding facts, RFM scores/ties, and funnel bounds. It rejected a duplicate sales-row fixture. Delivered item revenue in `mart_daily_sales` matched the independent PostgreSQL baseline in all 12 calendar months: BRL 13,221,498.11. When Silver is available in Databricks, the full `dbt build` sequence above includes these six business marts and their dbt tests; repeat it to exercise the Stage 4 incremental facts, then run the Stage 1C SCD2 change proof. Local SQL execution does not establish that Databricks materialization or its generic tests have passed.
 
 ## Stage 0 cloud status
 

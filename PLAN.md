@@ -224,20 +224,22 @@
 
 ## Giai đoạn 5 — Data Marts & Business Logic (Ngày 15–16)
 
-**Mục tiêu:** Tạo mart theo câu hỏi kinh doanh trên các fact đúng grain, để dashboard không phải tự join phức tạp.
+**Mục tiêu:** Tạo sáu mart theo câu hỏi kinh doanh trên các fact đúng grain, để dashboard không phải tự join phức tạp. Hoàn thiện và đối soát local trước; người dùng sẽ chạy dbt giai đoạn 4–5 trên Databricks sau.
 
 ### Việc cần làm
-- [ ] **Sales:** `mart_daily_sales` theo ngày mua/region ở cấp đơn; doanh thu theo category/seller/product lấy từ `fct_order_items` trong `mart_product_performance`. AOV và số đơn lấy ở cấp `fct_orders`. Không chia doanh thu item theo payment method khi đơn có nhiều lần/phương thức thanh toán mà chưa có quy tắc phân bổ.
-- [ ] **Customer:** `mart_customer_rfm` dùng `customer_unique_id`, chỉ tính đơn `delivered`; Recency/Frequency/Monetary và segment được kiểm tra để mỗi người mua có đúng một segment.
-- [ ] **Behavior:** `mart_funnel_daily` dùng `fct_sessions`/`fct_clickstream_events` theo ngày/device/channel, ghi rõ mọi phiên của bộ demo hiện được sinh từ đơn đã mua nên conversion không mang ý nghĩa thị trường.
-- [ ] **Reference:** áp `fct_exchange_rates` theo `date <= order_date`, lấy ngày gần nhất khi cần hiển thị USD; không cộng hoặc lấy trung bình rate như doanh thu.
-- [ ] `mart_campaign_performance` chỉ là demo synthetic sau khi có quy tắc attribution rõ và event mang `campaign_id` hoặc mapping có hiệu lực thời gian; hiện chưa dùng làm KPI thật. `refund rate` không tính vì nguồn chưa có refund event.
-- [ ] Test riêng cho từng mart: tổng doanh thu và số đơn trong `mart_daily_sales` khớp fact ở cùng grain/filter; tổng item price trong product mart khớp item fact; RFM không nhân đôi `customer_unique_id`; funnel không vượt số session.
+- [x] **Sales:** `mart_daily_sales` một dòng cho ngày mua × bang của khách, từ `fct_orders`; tổng đơn/hủy tính trên mọi status, doanh thu hàng, phí giao và AOV chỉ tính `delivered`. `mart_product_performance` một dòng cho product × seller × category quan sát lúc bán, từ `fct_order_items` đã giao. Không chia item revenue theo payment method khi chưa có quy tắc phân bổ.
+- [x] **Customer:** `mart_customer_rfm` một dòng cho `customer_unique_id`, chỉ tính đơn `delivered`; Monetary = tổng `item_subtotal_brl`. `as_of_date` = một ngày sau ngày mua delivered cuối trong bộ dữ liệu, để Olist lịch sử không bị gán tất cả là churned theo ngày chạy hiện tại. Điểm R/F/M 1–5 dùng percentile rank có giữ tie: recency thấp tốt, frequency/monetary cao tốt. Gán nhãn theo thứ tự: Champions nếu R/F/M đều ≥4; Loyal nếu R≥3 và F≥4; Potential nếu R≥4; At Risk nếu R≥2; còn lại Churned.
+- [x] **Behavior:** `mart_funnel_daily` một dòng cho ngày bắt đầu session × device × channel, đếm session qua bốn bước từ `fct_sessions`; clickstream hiện sinh từ đơn đã mua nên funnel là demo pipeline, không phải KPI chuyển đổi thật.
+- [x] **Payment:** `mart_payment_mix_daily` một dòng cho **ngày mua của đơn** × `payment_type`, từ `fct_payments`; có số payment, số đơn phân biệt, tổng `payment_value_brl`, chỉ số trả góp. Nguồn không có timestamp thanh toán; tổng payment không được gọi là doanh thu hàng.
+- [x] **Experience:** `mart_order_experience_daily` một dòng cho cohort ngày mua × bang khách, từ đơn `delivered`. Gom `fct_reviews` về một điểm trung bình mỗi order trước khi join; giao trễ so bằng ngày địa phương `America/Sao_Paulo` giữa actual và estimated delivery. Báo số đơn có delivery/review để hiểu mẫu số.
+- [x] **Reference:** `fct_exchange_rates` vẫn là fact tham chiếu; chỉ thêm USD vào mart khi dashboard cần, lấy rate gần nhất với `date <= purchase_date`. `mart_campaign_performance` chưa làm vì campaign chỉ là mock và event không có `campaign_id`; không tính refund rate hay rating theo product vì nguồn không hỗ trợ.
+- [x] Test mart trên Delta local: grain duy nhất; sales/product/RFM/payment/experience/funnel đối soát với fact tương ứng; doanh thu delivered khớp baseline nguồn ở cả 12 tháng lịch (BRL 13,221,498.11); mỗi `customer_unique_id` có đúng một segment, các giá trị R/F/M bằng nhau cùng điểm; funnel mỗi bước không vượt số session. Chưa chạy dbt generic/singular tests trên Databricks.
 
 ### Done khi
-- [ ] Bốn mart chính build được bằng `dbt build --select marts.business`
-- [ ] Cộng doanh thu 1 ngày bất kỳ ở mart, ở fact và ở Postgres OLTP (chỉ tính đơn `delivered`) cho **ba con số khớp nhau** — đây là bước đối soát quan trọng nhất trước khi làm dashboard
-- [ ] RFM: tổng số customers trong các segment cộng lại đúng bằng tổng số customers có ít nhất 1 đơn delivered, không khách nào bị tính 2 segment
+- [x] Sáu model business và các SQL tests chạy được trên Gold/Silver Delta local; test grain có fixture vi phạm và phát hiện đúng.
+- [ ] Cả sáu mart và tests build được bằng `dbt build --select marts.business` trên Databricks sau khi Silver giai đoạn 3 có trong catalog; trước đó toàn bộ SQL được chạy và đối soát local.
+- [x] Tổng doanh thu delivered của mart khớp fact; cả 12 tháng lịch khớp baseline SQL từ Postgres OLTP. Đối chiếu thêm một ngày bất kỳ trên Databricks với Postgres khi chạy cloud.
+- [x] RFM: tổng `frequency_orders` bằng số đơn delivered, một dòng và một segment cho mỗi `customer_unique_id` có đơn delivered
 
 ---
 
@@ -275,9 +277,9 @@
 
 ### Việc cần làm
 - [ ] Kết nối công cụ dashboard đã chọn với các bảng mart Gold (không nối trực tiếp vào fact/dim thô)
-- [ ] **Trang 1 — Executive:** KPI doanh thu hôm nay/tháng này, số đơn, AOV, tỉ lệ huỷ; biểu đồ đường doanh thu 90 ngày; doanh thu theo category
-- [ ] **Trang 2 — Customer/RFM:** phân bố segment RFM, bảng Top VIP, cohort retention theo tháng đăng ký
-- [ ] **Trang 3 — Product & Funnel:** funnel chart 4 bước + tỉ lệ rớt, top/bottom product theo doanh thu và rating, tỉ lệ refund theo seller
+- [ ] **Trang 1 — Executive:** doanh thu, số đơn, AOV, tỉ lệ huỷ trong khoảng ngày có dữ liệu; đường doanh thu theo ngày và doanh thu theo category
+- [ ] **Trang 2 — Customer/RFM:** phân bố segment, bảng Top VIP, lượt mua lặp lại theo tháng mua đầu tiên (nguồn không có ngày đăng ký thật)
+- [ ] **Trang 3 — Product, Payment & Experience:** sản phẩm theo doanh thu; cơ cấu thanh toán; giao trễ và rating ở cấp đơn. Funnel mô phỏng có nhãn demo riêng; không hiển thị refund theo seller hoặc rating theo product khi nguồn chưa hỗ trợ.
 - [ ] **Trang 4 — Data Quality/Ops:** số dòng Bronze/Silver/Gold theo ngày (từ `ops_pipeline_runs`), CDC lag, số record quarantine, lần chạy DAG gần nhất
 - [ ] Kiểm chứng: chọn ngẫu nhiên 5 con số trên dashboard, truy ngược về mart → fact → OLTP bằng SQL, ghi lại quá trình đối soát này vào README/docs
 

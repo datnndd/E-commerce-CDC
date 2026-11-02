@@ -54,6 +54,7 @@ Out of scope: mutating the frozen source, uploading local Silver to Databricks, 
 
 - Focused proof: `tests.test_gold_scd2_local` passed with two customer/product versions; old/new orders kept their proper keys and historical item prices.
 - Integration or end-to-end proof: `spark_jobs.verify_gold` executed 29 dbt model SELECTs against 12 local Silver Delta tables. Six fact counts matched source; 20 sessions, BRL 13,591,643.70 item revenue, and 24 purchase months matched Stage 1B. Five singular tests passed; a duplicate fixture was rejected.
+- 2026-11-02 local follow-up: Stage 5 product-mart reconciliation exposed two `dim_category` rows for `__unknown__` when a source category was NULL. The dimension now emits one row, all eight dimension keys passed uniqueness/non-null checks, and product mart revenue matched delivered item fact.
 - Repository-required checks: dbt parse passed with a non-network test profile; `uv lock --check`, Python compile, and `git diff --check` passed. The final local Gold proof and two-version fixture both passed after retaining historical geography/category keys.
 
 ## Result
