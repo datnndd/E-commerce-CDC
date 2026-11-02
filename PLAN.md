@@ -3,7 +3,7 @@
 > **Mục tiêu cuối cùng:** Một project Data Engineer hoàn chỉnh chạy end-to-end, bỏ được vào CV/GitHub và demo được trong phỏng vấn:
 > PostgreSQL OLTP (local, sau đó Amazon RDS) → CDC → Amazon S3 Bronze → Databricks trên AWS xử lý Silver/Gold bằng Delta Lake và dbt-databricks (SCD Type 2, Incremental) → dashboard, điều phối bằng Airflow, kiểm tra chất lượng bằng dbt tests + Great Expectations.
 >
-> **Quy tắc làm việc:** Làm xong MVP end-to-end ở scale nhỏ trước (100k orders), rồi mới scale lớn và nâng cấp CDC. Không làm giai đoạn sau khi giai đoạn trước chưa đạt tiêu chí "Done" của nó. Mỗi giai đoạn xong phải tick checklist, commit Git và ghi lại kết quả vào README.
+> **Quy tắc làm việc:** Làm xong MVP end-to-end ở scale nhỏ trước (100k orders), rồi mới scale lớn và nâng cấp CDC. Theo lựa chọn hiện tại, Giai đoạn 4 và 5 được triển khai, đối soát local trước rồi kiểm tra cùng nhau trên Databricks. Chỉ đánh dấu tiêu chí "Done" cloud sau khi có kết quả chạy thực; mỗi phần hoàn tất cần tick checklist, commit Git và ghi kết quả vào README.
 
 - **Niche:** E-commerce / Retail
 - **Stack chính:** Docker, PostgreSQL/Amazon RDS, Python, Amazon S3, Databricks trên AWS, Spark, Delta Lake, dbt-databricks, Airflow; công cụ dashboard cần chốt trước Giai đoạn 7
@@ -22,10 +22,12 @@
 | 2 | Ingestion & CDC Phase 1 → Bronze | Ngày 5–7 | Dữ liệu raw lên S3 đúng prefix/partition, có watermark |
 | 3 | Silver — Clean, Dedup, MERGE CDC | Ngày 8–10 | Bảng Delta Silver sạch, idempotent, xử lý được update/delete khi nguồn cung cấp sự kiện tương ứng |
 | 4 | dbt Core — Staging, Snapshot SCD2, Facts/Dims | Ngày 11–14 | Star schema Gold chạy incremental |
-| 5 | Data Marts & Business Logic | Ngày 15–16 | RFM, Funnel, Product, Daily Sales |
+| 5 | Data Marts & Business Logic | Ngày 15–16 | Daily Sales, Product, RFM, Funnel, Payment Mix, Order Experience |
 | 6 | Orchestration & Data Quality | Ngày 17–18 | Airflow DAG tự chạy, GE checks, alert khi fail |
 | 7 | Dashboard & Kiểm chứng số liệu | Ngày 19–20 | Dashboard 4 trang, số khớp với OLTP |
 | 8 | Nâng cấp & Đóng gói Portfolio | Ngày 21–22+ (tuỳ chọn) | Debezium/Kafka, README, demo, CV |
+
+**Trạng thái 02/11/2026:** Giai đoạn 4 và 5 đã có SQL dbt và đối soát trên Delta local. Chưa tạo các bảng Silver/Gold của pipeline trong Databricks, nên `dbt build`, snapshots SCD2 thực tế, generic tests, incremental MERGE và query profile trên cloud vẫn chờ kiểm chứng.
 
 ---
 
@@ -209,9 +211,12 @@
   - Gắn fact với phiên bản SCD2 tại thời điểm sự kiện **khi có lịch sử quan sát**; đơn Olist trước lần snapshot đầu tiên gắn với phiên bản đầu quan sát được. Không coi phiên bản này là trạng thái lịch sử thực của 2016–2018. SCD2 không tạo lại lịch sử chưa từng được ghi nhận.
 - [x] Viết dbt tests: `unique, not_null` theo grain, quan hệ fact → dimension, trạng thái đơn hợp lệ, giá item không âm, review score 1–5; test tổng item price và số dòng so với Silver/source baseline, test không fanout khi cộng payment/review. Các singular SQL tests đã chạy local; generic tests chờ `dbt build` trên Databricks.
 - [x] Đối soát SQL Gold trên Silver local: 99,441 orders, 112,650 items, 103,886 payments, 99,224 reviews, 80 click events, 777 rates; tổng `item_price_brl` = BRL 13,591,643.70 và cả 24 tháng mua hàng khớp baseline. Fixture hai phiên bản xác nhận đơn cũ giữ khóa phiên bản đầu và giá bán gốc.
+- [x] Khi nối Product Mart ở Giai đoạn 5, test grain phát hiện `dim_category` có hai dòng khóa `__unknown__` do category NULL. Đã sửa để NULL ánh xạ tới một dòng; kiểm tra local xác nhận cả tám dimension keys đều unique/non-null và doanh thu product mart không bị nhân lên.
+- [x] `dbt parse` nhận 35 models (29 model Giai đoạn 4 + 6 business marts), 2 snapshots, 85 data tests; đây là kiểm tra cấu trúc, chưa phải `dbt build` trên Databricks.
 - [ ] Chạy `dbt docs generate` và xem lineage graph — chụp lại graph này cho README
 
 ### Done khi
+- [x] SQL của 29 model Giai đoạn 4 chạy trên 12 bảng Silver Delta local; 5 singular SQL tests và fixture phát hiện duplicate item đã qua. Fixture hai phiên bản kiểm tra khóa SCD2 và giá bán, không thay thế lần chạy snapshot thật.
 - [ ] `dbt build` xanh trên Databricks ở lần chạy đầu và lần chạy incremental tiếp theo; trước đó SQL Gold được đối soát trên Delta local.
 - [ ] **Test SCD2:** trên nguồn kiểm thử 1C riêng, đổi giá 1 product + đổi city 1 customer → chạy lại pipeline → snapshot có thêm phiên bản và đóng `dbt_valid_to` cũ; fact cũ giữ `item_price` và khóa phiên bản phù hợp. Snapshot RDS gốc hiện không có `current_price`/soft-delete nên không thể dùng nó để chứng minh thử nghiệm này.
 - [ ] So sánh query profile trong Databricks khi có/không có filter `purchase_date_key`, ghi lại lượng dữ liệu đọc và thời gian thực thi để quyết định có cần clustering/partition
@@ -234,6 +239,19 @@
 - [x] **Experience:** `mart_order_experience_daily` một dòng cho cohort ngày mua × bang khách, từ đơn `delivered`. Gom `fct_reviews` về một điểm trung bình mỗi order trước khi join; giao trễ so bằng ngày địa phương `America/Sao_Paulo` giữa actual và estimated delivery. Báo số đơn có delivery/review để hiểu mẫu số.
 - [x] **Reference:** `fct_exchange_rates` vẫn là fact tham chiếu; chỉ thêm USD vào mart khi dashboard cần, lấy rate gần nhất với `date <= purchase_date`. `mart_campaign_performance` chưa làm vì campaign chỉ là mock và event không có `campaign_id`; không tính refund rate hay rating theo product vì nguồn không hỗ trợ.
 - [x] Test mart trên Delta local: grain duy nhất; sales/product/RFM/payment/experience/funnel đối soát với fact tương ứng; doanh thu delivered khớp baseline nguồn ở cả 12 tháng lịch (BRL 13,221,498.11); mỗi `customer_unique_id` có đúng một segment, các giá trị R/F/M bằng nhau cùng điểm; funnel mỗi bước không vượt số session. Chưa chạy dbt generic/singular tests trên Databricks.
+
+**Kết quả local trên snapshot Olist hiện tại** (số dòng có thể đổi khi nạp thêm CDC):
+
+| Business mart | Số dòng |
+|---|---:|
+| `mart_daily_sales` | 10,742 |
+| `mart_product_performance` | 33,659 |
+| `mart_customer_rfm` | 93,358 |
+| `mart_funnel_daily` | 20 |
+| `mart_payment_mix_daily` | 2,276 |
+| `mart_order_experience_daily` | 10,608 |
+
+Local verifier đã chạy 14 singular SQL tests cho business marts, phát hiện đúng một fixture sales bị trùng grain, và đối soát doanh thu delivered BRL 13,221,498.11 với baseline PostgreSQL trong cả 12 tháng lịch. `dbt ls --select marts.business --resource-type model` trả về đúng sáu mart.
 
 ### Done khi
 - [x] Sáu model business và các SQL tests chạy được trên Gold/Silver Delta local; test grain có fixture vi phạm và phát hiện đúng.
