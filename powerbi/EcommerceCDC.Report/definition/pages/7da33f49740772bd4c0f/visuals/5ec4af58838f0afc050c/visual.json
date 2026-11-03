@@ -1,0 +1,88 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.9.0/schema.json",
+  "name": "5ec4af58838f0afc050c",
+  "position": {
+    "x": 444,
+    "y": 348,
+    "z": 1000,
+    "height": 255,
+    "width": 380,
+    "tabOrder": 1000
+  },
+  "visual": {
+    "visualType": "barChart",
+    "query": {
+      "queryState": {
+        "Category": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "mart_order_experience_daily"
+                    }
+                  },
+                  "Property": "customer_state"
+                }
+              },
+              "queryRef": "mart_order_experience_daily.customer_state",
+              "nativeQueryRef": "customer_state"
+            }
+          ]
+        },
+        "Y": {
+          "projections": [
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "mart_order_experience_daily"
+                    }
+                  },
+                  "Property": "Late rate"
+                }
+              },
+              "queryRef": "mart_order_experience_daily.Late rate",
+              "nativeQueryRef": "Late rate"
+            }
+          ]
+        }
+      },
+      "sortDefinition": {
+        "sort": [
+          {
+            "field": {
+              "Measure": {
+                "Expression": {
+                  "SourceRef": {
+                    "Entity": "mart_order_experience_daily"
+                  }
+                },
+                "Property": "Late rate"
+              }
+            },
+            "direction": "Descending"
+          }
+        ],
+        "isDefaultSort": true
+      }
+    },
+    "visualContainerObjects": {
+      "title": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "false"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,88 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.9.0/schema.json",
+  "name": "15f6fd0a14d518f39a7f",
+  "position": {
+    "x": 24,
+    "y": 331,
+    "z": 1000,
+    "height": 323,
+    "width": 390,
+    "tabOrder": 1000
+  },
+  "visual": {
+    "visualType": "barChart",
+    "query": {
+      "queryState": {
+        "Category": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "mart_product_performance"
+                    }
+                  },
+                  "Property": "category_name_english"
+                }
+              },
+              "queryRef": "mart_product_performance.category_name_english",
+              "nativeQueryRef": "category_name_english"
+            }
+          ]
+        },
+        "Y": {
+          "projections": [
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "mart_product_performance"
+                    }
+                  },
+                  "Property": "Product revenue"
+                }
+              },
+              "queryRef": "mart_product_performance.Product revenue",
+              "nativeQueryRef": "Product revenue"
+            }
+          ]
+        }
+      },
+      "sortDefinition": {
+        "sort": [
+          {
+            "field": {
+              "Measure": {
+                "Expression": {
+                  "SourceRef": {
+                    "Entity": "mart_product_performance"
+                  }
+                },
+                "Property": "Product revenue"
+              }
+            },
+            "direction": "Descending"
+          }
+        ],
+        "isDefaultSort": true
+      }
+    },
+    "visualContainerObjects": {
+      "title": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "false"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

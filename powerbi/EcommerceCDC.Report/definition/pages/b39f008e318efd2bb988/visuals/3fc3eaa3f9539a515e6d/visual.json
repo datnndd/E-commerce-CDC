@@ -1,0 +1,91 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.9.0/schema.json",
+  "name": "3fc3eaa3f9539a515e6d",
+  "position": {
+    "x": 844,
+    "y": 331,
+    "z": 1000,
+    "height": 323,
+    "width": 410,
+    "tabOrder": 1000
+  },
+  "visual": {
+    "visualType": "tableEx",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "mart_customer_rfm"
+                    }
+                  },
+                  "Property": "customer_unique_id"
+                }
+              },
+              "queryRef": "mart_customer_rfm.customer_unique_id",
+              "nativeQueryRef": "customer_unique_id"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "mart_customer_rfm"
+                    }
+                  },
+                  "Property": "Customer monetary"
+                }
+              },
+              "queryRef": "mart_customer_rfm.Customer monetary",
+              "nativeQueryRef": "Customer monetary"
+            }
+          ]
+        }
+      },
+      "sortDefinition": {
+        "sort": [
+          {
+            "field": {
+              "Measure": {
+                "Expression": {
+                  "SourceRef": {
+                    "Entity": "mart_customer_rfm"
+                  }
+                },
+                "Property": "Customer monetary"
+              }
+            },
+            "direction": "Descending"
+          }
+        ],
+        "isDefaultSort": true
+      }
+    },
+    "objects": {
+      "columnHeaders": [
+        {
+          "properties": {
+            "columnAdjustment": {
+              "expr": {
+                "Literal": {
+                  "Value": "'growToFit'"
+                }
+              }
+            },
+            "autoSizeColumnWidth": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

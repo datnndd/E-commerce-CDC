@@ -1,0 +1,88 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.9.0/schema.json",
+  "name": "cff4a4110595ee2c3937",
+  "position": {
+    "x": 434,
+    "y": 331,
+    "z": 1000,
+    "height": 323,
+    "width": 390,
+    "tabOrder": 1000
+  },
+  "visual": {
+    "visualType": "barChart",
+    "query": {
+      "queryState": {
+        "Category": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "mart_product_performance"
+                    }
+                  },
+                  "Property": "seller_state"
+                }
+              },
+              "queryRef": "mart_product_performance.seller_state",
+              "nativeQueryRef": "seller_state"
+            }
+          ]
+        },
+        "Y": {
+          "projections": [
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "mart_product_performance"
+                    }
+                  },
+                  "Property": "Product revenue"
+                }
+              },
+              "queryRef": "mart_product_performance.Product revenue",
+              "nativeQueryRef": "Product revenue"
+            }
+          ]
+        }
+      },
+      "sortDefinition": {
+        "sort": [
+          {
+            "field": {
+              "Measure": {
+                "Expression": {
+                  "SourceRef": {
+                    "Entity": "mart_product_performance"
+                  }
+                },
+                "Property": "Product revenue"
+              }
+            },
+            "direction": "Descending"
+          }
+        ],
+        "isDefaultSort": true
+      }
+    },
+    "visualContainerObjects": {
+      "title": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "false"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

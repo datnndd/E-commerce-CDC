@@ -4,7 +4,7 @@ Date: 2026-11-02
 
 ## Status
 
-Active — prepared; implementation has not started.
+Active — five-page PBIP and Import semantic model built; data load blocked by Databricks compute eligibility.
 
 ## Outcome
 
@@ -24,7 +24,7 @@ Out of scope: new marts, new attribution logic, real clickstream conversion, uns
 
 ## Approach
 
-1. Connect Power BI Desktop to the Databricks SQL warehouse and read `mart_daily_sales` plus `ops_pipeline_runs`. Record the server/HTTP path setup without secrets. Choose Import or DirectQuery from this result, then check how the report can be shared and refreshed.
+1. Use Import, as selected by the owner, for the six marts and Ops. Connect Power BI Desktop to the Databricks SQL warehouse and read `mart_daily_sales` plus `ops_pipeline_runs`. Record the server/HTTP path setup without secrets, then check how the report can be shared and refreshed.
 2. Establish a small semantic model over the six marts and Ops. Confirm each table's grain and date column. Keep Product and RFM independent of the Executive purchase-date filter; keep funnel session date separate.
 3. Build the five pages in `PLAN.md`: Executive/Sales, Product, Customer/RFM, Journey & Experience, and Data Quality/Ops. Label the funnel as synthetic and show RFM `as_of_date`.
 4. Check measures at display grain. Recompute AOV, cancellation rate, and late-delivery rate from summed numerators and denominators; do not average stored rates. Default date slicers to dates present in Olist.
@@ -32,7 +32,7 @@ Out of scope: new marts, new attribution logic, real clickstream conversion, uns
 
 ## Risks And Recovery
 
-- Power BI authentication or Databricks Free Edition limits may block a direct connection. Keep the connection mode open until the smoke test passes; an export route requires a separate decision and reconciliation check.
+- The Databricks Free Edition warehouse currently rejects the first Import refresh because this workspace is no longer eligible for Serverless Compute. Keep the report local and data-empty until a working warehouse is available. An export route requires a separate decision and reconciliation check.
 - Mixing marts with different grains can multiply measures or apply false filters. Use the page-specific filter contracts in `PLAN.md` and compare displayed totals to the source marts.
 - A report file may retain connection metadata. Do not commit or share credentials; inspect the artifact before publishing.
 - Stage 6 carryover: before claiming an automated Ops dashboard, reconcile a final Airflow `success` run ID with `ops_pipeline_runs`, then separately test repeated-logical-date and unattended operation if those claims are needed.
@@ -40,6 +40,8 @@ Out of scope: new marts, new attribution logic, real clickstream conversion, uns
 ## Progress
 
 - [x] Record the owner's Power BI choice and the existing five-page/mart scope.
+- [x] Build local PBIP with five pages, six marts plus Ops, and Import storage mode.
+- [x] Validate PBIR structure and parse the TMDL model with Microsoft Power BI Modeling MCP.
 - [ ] Prove Power BI Desktop connection to one mart and Ops; decide Import/DirectQuery and refresh/sharing path.
 - [ ] Build and inspect five report pages.
 - [ ] Reconcile five dashboard numbers to mart, fact, and OLTP.
@@ -48,13 +50,14 @@ Out of scope: new marts, new attribution logic, real clickstream conversion, uns
 ## Decisions
 
 - 2026-11-02: The owner selected Power BI. Connection mode and sharing remain open until a workspace-specific test.
+- 2026-11-03: The owner selected Import to avoid per-visual Databricks queries. The first load and later refresh still require SQL compute. The owner has no second workspace/warehouse; retain the PBIP and record the data-load block.
 
 ## Validation
 
-- Focused proof: connection smoke test and displayed measure checks at each mart grain are pending.
+- Focused proof: PBIR validation passed with 0 errors/0 warnings; Power BI Modeling MCP loaded 7 tables and 26 measures from TMDL. Power BI Desktop opened the PBIP and rendered five layouts with empty visuals. A targeted full refresh of `mart_daily_sales` failed with HTTP 400: serverless compute disabled in the workspace's global warehouse config. Direct Databricks SQL connection reported that the workspace is no longer eligible for Serverless Compute. No data-bearing connection smoke test or displayed measure check has passed.
 - Integration or end-to-end proof: five-number dashboard-to-OLTP reconciliation and reader check are pending.
 - Repository-required checks: `git diff --check` passed for tracked files; new documents were reviewed for trailing whitespace.
 
 ## Result
 
-Preparation only. Stage 7 report implementation and evidence remain open.
+Report structure and Import model exist locally. Stage 7 remains open until data loads, five pages are reviewed with data, and 5/5 displayed numbers reconcile to Gold and OLTP.

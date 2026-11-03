@@ -1,0 +1,70 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.9.0/schema.json",
+  "name": "4660aab28b7561b87cef",
+  "position": {
+    "x": 24,
+    "y": 331,
+    "z": 1000,
+    "height": 323,
+    "width": 780,
+    "tabOrder": 1000
+  },
+  "visual": {
+    "visualType": "lineChart",
+    "query": {
+      "queryState": {
+        "Category": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "mart_daily_sales"
+                    }
+                  },
+                  "Property": "purchase_date"
+                }
+              },
+              "queryRef": "mart_daily_sales.purchase_date",
+              "nativeQueryRef": "purchase_date"
+            }
+          ]
+        },
+        "Y": {
+          "projections": [
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "mart_daily_sales"
+                    }
+                  },
+                  "Property": "Delivered item revenue"
+                }
+              },
+              "queryRef": "mart_daily_sales.Delivered item revenue",
+              "nativeQueryRef": "Delivered item revenue"
+            }
+          ]
+        }
+      }
+    },
+    "visualContainerObjects": {
+      "title": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "false"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

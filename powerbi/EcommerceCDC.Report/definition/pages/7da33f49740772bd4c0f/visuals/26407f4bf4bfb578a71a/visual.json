@@ -1,0 +1,88 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.9.0/schema.json",
+  "name": "26407f4bf4bfb578a71a",
+  "position": {
+    "x": 864,
+    "y": 348,
+    "z": 1000,
+    "height": 255,
+    "width": 390,
+    "tabOrder": 1000
+  },
+  "visual": {
+    "visualType": "barChart",
+    "query": {
+      "queryState": {
+        "Category": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "mart_funnel_daily"
+                    }
+                  },
+                  "Property": "device"
+                }
+              },
+              "queryRef": "mart_funnel_daily.device",
+              "nativeQueryRef": "device"
+            }
+          ]
+        },
+        "Y": {
+          "projections": [
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "mart_funnel_daily"
+                    }
+                  },
+                  "Property": "Purchase sessions"
+                }
+              },
+              "queryRef": "mart_funnel_daily.Purchase sessions",
+              "nativeQueryRef": "Purchase sessions"
+            }
+          ]
+        }
+      },
+      "sortDefinition": {
+        "sort": [
+          {
+            "field": {
+              "Measure": {
+                "Expression": {
+                  "SourceRef": {
+                    "Entity": "mart_funnel_daily"
+                  }
+                },
+                "Property": "Purchase sessions"
+              }
+            },
+            "direction": "Descending"
+          }
+        ],
+        "isDefaultSort": true
+      }
+    },
+    "visualContainerObjects": {
+      "title": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "false"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

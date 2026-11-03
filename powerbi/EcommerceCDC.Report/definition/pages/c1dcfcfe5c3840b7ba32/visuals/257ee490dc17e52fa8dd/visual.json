@@ -1,0 +1,88 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.9.0/schema.json",
+  "name": "257ee490dc17e52fa8dd",
+  "position": {
+    "x": 830,
+    "y": 331,
+    "z": 1000,
+    "height": 323,
+    "width": 425,
+    "tabOrder": 1000
+  },
+  "visual": {
+    "visualType": "barChart",
+    "query": {
+      "queryState": {
+        "Category": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "mart_daily_sales"
+                    }
+                  },
+                  "Property": "customer_state"
+                }
+              },
+              "queryRef": "mart_daily_sales.customer_state",
+              "nativeQueryRef": "customer_state"
+            }
+          ]
+        },
+        "Y": {
+          "projections": [
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "mart_daily_sales"
+                    }
+                  },
+                  "Property": "Delivered item revenue"
+                }
+              },
+              "queryRef": "mart_daily_sales.Delivered item revenue",
+              "nativeQueryRef": "Delivered item revenue"
+            }
+          ]
+        }
+      },
+      "sortDefinition": {
+        "sort": [
+          {
+            "field": {
+              "Measure": {
+                "Expression": {
+                  "SourceRef": {
+                    "Entity": "mart_daily_sales"
+                  }
+                },
+                "Property": "Delivered item revenue"
+              }
+            },
+            "direction": "Descending"
+          }
+        ],
+        "isDefaultSort": true
+      }
+    },
+    "visualContainerObjects": {
+      "title": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "false"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
