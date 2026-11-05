@@ -265,20 +265,19 @@ Local verifier đã chạy 14 singular SQL tests cho business marts, phát hiệ
 
 ## Giai đoạn 6 — Orchestration & Data Quality (Ngày 17–18)
 
-**Mục tiêu:** Airflow local điều phối nguồn → Silver → Gold/sáu business marts trên Databricks; lỗi dữ liệu phải dừng trước Gold và có dấu vết vận hành. Token Databricks cho DAG được cấu hình riêng, không dùng OAuth đăng nhập tương tác.
+**Mục tiêu:** Airflow local điều phối nguồn CDC/API/logs lên Bronze S3; kích hoạt Silver Transform chạy trực tiếp trên Databricks Spark cluster (đọc/ghi thẳng S3 Delta & đăng ký Unity Catalog kèm Quality Gate tích hợp); sau đó kích hoạt dbt build Gold/marts trên Databricks. Lỗi dữ liệu dừng trước Gold và có dấu vết vận hành. Token Databricks cho DAG được cấu hình qua connection/env, không dùng OAuth đăng nhập tương tác.
 
 ### Việc cần làm
 - [x] Viết Airflow DAG `ecommerce_cdc_daily` theo thứ tự:
   ```
-  extract_postgres_cdc_to_bronze → generate_demo_clickstream_to_bronze ─┐
-  ingest_exchange_rates_to_bronze / ingest_campaign_fixture_to_bronze ──┴→ sync_committed_bronze_to_local → transform_bronze_to_silver_delta → check_silver_great_expectations
-                                                                                                         ↓
-                                            publish_silver_to_databricks → build_gold_and_marts_dbt → record_pipeline_success
+  extract_postgres_cdc_to_bronze ──► generate_demo_clickstream_to_bronze ──┐
+  ingest_exchange_rates_to_bronze ────────────────────────────────────────┼──► run_silver_transform_on_databricks ──► build_gold_and_marts_dbt ──► record_pipeline_success
+  ingest_campaign_fixture_to_bronze ──────────────────────────────────────┘
   ```
-- [x] Airflow local chạy được Python/uv, Java/Spark, PostgreSQL, S3 và dbt Databricks bằng token cung cấp lúc chạy. DAG đặt `retries = 2`, `retry_delay = 5m`, callback webhook khi task fail; cấu hình token không tương tác và webhook thật vẫn thuộc bước bật lịch unattended.
+- [x] Airflow local chạy trong container Docker gọn nhẹ (đã gỡ OpenJDK/Spark nội bộ, dùng `DatabricksRunNowOperator`), điều phối Python/uv, PostgreSQL, S3, Databricks connection và dbt Databricks. DAG đặt `retries = 2`, `retry_delay = 5m`, callback webhook khi task fail; cấu hình qua `AIRFLOW_CONN_DATABRICKS_DEFAULT` và `DATABRICKS_SILVER_JOB_ID`.
 - [x] Chạy thử 1C với prefix S3 và schema Databricks riêng (`PIPELINE_S3_PREFIX`, `DBT_SILVER_SCHEMA`, `DBT_TARGET_SCHEMA`), không trộn dữ liệu mô phỏng với snapshot RDS chính.
-- [x] Great Expectations checkpoint trên **Silver trước khi publish/đọc vào Gold**: `slv_orders.customer_id` không null, `slv_payments.payment_value >= 0`, `slv_clickstream_events.event_timestamp` không nằm trong tương lai. Ops ghi quarantine và cảnh báo khi tổng dòng Silver giảm >20% so với trung bình 7 lần chạy thành công cùng namespace; cảnh báo volume không tự chặn DAG.
-- [x] Khi checkpoint fail, `publish_silver` và `dbt_build` không chạy; Gold giữ 99.461 orders như trước lỗi. Lượt payment âm làm checkpoint fail cả ba lần, webhook local nhận alert. Bản ghi Ops của hai lượt bị gián đoạn đã được sửa về `failed`; vẫn cần chạy lại nhánh lỗi tuần tự để xác nhận trạng thái DagRun cuối.
+- [x] Quality Gate tích hợp trực tiếp vào cuối job `silver_transform.py` chạy trên Databricks (hoặc local fallback): kiểm tra khóa chính duy nhất/không null, join hợp lệ giữa orders và items, và 3 quy tắc Great Expectations (`slv_orders.customer_id` không null, `slv_payments.payment_value >= 0`, `slv_clickstream_events.event_timestamp` không nằm trong tương lai). Loại bỏ các script trung gian không cần thiết (`sync_bronze.py`, `publish_silver.py`).
+- [x] Khi Quality Gate fail, job Silver dừng ngay lập tức (fail-fast), không ghi đè Silver và `build_gold_and_marts_dbt` không chạy; Gold giữ 99.461 orders như trước lỗi. Lượt payment âm làm gate fail, webhook local nhận alert. Bản ghi Ops ghi nhận `failed` với nguyên nhân chi tiết.
 - [x] Ghi metadata mỗi lần chạy vào Delta `ops_pipeline_runs`: run ID, thời gian, trạng thái, lỗi, số dòng Bronze/Silver/Gold và từng business mart, số quarantine. Bảng này nuôi trang Data Quality/Ops Giai đoạn 7.
 - [x] Poll không đổi không upload lại: lần poll `orders` lặp trên nguồn 1C quét 0 và xuất bản 0 dòng. Sáu fact incremental bỏ qua cùng khóa/cùng ingestion time; lượt `dbt build` lại trên main có 0 MERGE updates/inserts. Chưa bật lịch unattended trước khi token và đường mạng được cấu hình.
 

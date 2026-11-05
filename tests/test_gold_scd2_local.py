@@ -1,5 +1,6 @@
 """Check SCD2 fact joins with two observed versions and a pre-snapshot order."""
 
+import os
 import unittest
 from decimal import Decimal
 from pathlib import Path
@@ -11,6 +12,7 @@ from spark_jobs.verify_gold import model_path, render
 PROJECT = Path(__file__).resolve().parents[1] / "dbt_project"
 
 
+@unittest.skipUnless(os.environ.get("SILVER_TEST_DOCKER") == "1", "run with SILVER_TEST_DOCKER=1 in the local Silver Docker image")
 class GoldScd2LocalTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:

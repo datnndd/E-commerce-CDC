@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 
-@unittest.skipUnless(importlib.util.find_spec("airflow"), "run in the Airflow Docker image")
+@unittest.skipUnless(importlib.util.find_spec("airflow.models"), "run in the Airflow Docker image")
 class Stage6DagTest(unittest.TestCase):
     def test_quality_precedes_gold_and_failure_branch_sees_all_tasks(self):
         from airflow.dag_processing.dagbag import DagBag
