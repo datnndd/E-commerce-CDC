@@ -4,7 +4,7 @@ Date: 2026-11-05
 
 ## Status
 
-Active — repository code and DAG proof completed; real Spark/Delta/GX and Databricks Job proof remain open.
+Active — a Databricks Job reached script startup but failed before Spark processing; a successful Spark/Delta/GX and DAG run remain open.
 
 ## Outcome
 
@@ -40,6 +40,7 @@ Out of scope: changing the frozen main source, provisioning credentials or compu
 - [x] Inspect current authority, DAG, Spark code, local tests, and runbook.
 - [x] Implement the remote Job contract, restore Great Expectations inside the Job, remove duplicate/dead migration code, and correct the Airflow connection contract.
 - [x] Run focused unit tests, DAG import/graph proof, CLI guard, lock/Compose/syntax/diff checks.
+- [x] Reproduce the Databricks Spark Python task's missing `__file__` under `exec(...)`, remove the path bootstrap, and pass the focused regression test.
 - [ ] Run Spark/Delta/GX integration tests in the Linux Silver image; Docker Hub base-image retrieval failed twice, and local Windows JDK 24 cannot start the Spark gateway.
 - [ ] Validate a real isolated Databricks Job and Airflow run when workspace compute is available.
 
@@ -53,9 +54,10 @@ Out of scope: changing the frozen main source, provisioning credentials or compu
 
 - Focused proof: 11 host unit tests passed, including schema-key parity, S3 Spark manifest/checksum positive and negative cases, and ingestion tests. `--dataset` plus `--catalog` is rejected before Spark starts. The Airflow DAG test passed twice in the rebuilt provider image: main and isolated S3 prefix/schema graph contracts.
 - Connection proof: Compose generated a JSON connection from a fake workspace host/token, Airflow 3.3.2 resolved its host/password, and the DAG tests passed after the duplicate connection requirement was removed. No real authentication was attempted.
-- Integration or end-to-end proof: no new Spark/Delta/GX or cloud run. Linux Silver image build failed twice on Docker Hub proxy/base-image fetch; Windows Java 24 fails to start the local Spark gateway. Databricks CLI read-only access fails because its OAuth refresh token expired.
+- Integration or end-to-end proof: no successful Spark/Delta/GX or full cloud run. Linux Silver image build failed twice on Docker Hub proxy/base-image fetch; Windows Java 24 fails to start the local Spark gateway. Databricks CLI read-only access failed because its OAuth refresh token expired.
+- Runtime feedback: the owner's Workspace Git-folder Job imported the updated script but raised `NameError` because Databricks executed it without `__file__`. The local `exec(...)` regression test failed with the same exception before the fix and passed afterward with all five Silver manifest tests. The fixed revision has not yet been run on Databricks.
 - Repository-required checks: `uv lock --check`, `docker compose config --quiet`, `compileall`, and `git diff --check` passed; rerun after final edits.
 
 ## Result
 
-Repository contract and DAG are implemented, but no real Databricks Silver Job has run. Keep this plan active until an isolated Job and DAG run verify quality failure/retry, Silver table locations/counts, dbt success, and Ops state. The Airflow image still installs unused PySpark/Delta/GX dependencies; reduce it after remote proof. Current Silver processing scans and verifies all historical manifests on every run, so cost grows with Bronze history; design a durable processed-run checkpoint before claiming daily scale.
+Repository contract and DAG are implemented, but no Databricks Silver Job has completed successfully. Keep this plan active until an isolated Job and DAG run verify quality failure/retry, Silver table locations/counts, dbt success, and Ops state. The Airflow image still installs unused PySpark/Delta/GX dependencies; reduce it after remote proof. Current Silver processing scans and verifies all historical manifests on every run, so cost grows with Bronze history; design a durable processed-run checkpoint before claiming daily scale.

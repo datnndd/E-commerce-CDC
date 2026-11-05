@@ -3,6 +3,7 @@
 import hashlib
 import json
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -11,6 +12,12 @@ from spark_jobs.silver_transform import KEYS, load_manifests_from_s3, verify_man
 
 
 class SilverManifestTest(unittest.TestCase):
+    def test_spark_python_entrypoint_without_file_global(self):
+        script = Path(__file__).resolve().parents[1] / "spark_jobs" / "silver_transform.py"
+        namespace = {"__name__": "databricks_spark_python_task"}
+        exec(compile(script.read_bytes(), str(script), "exec"), namespace)
+        self.assertEqual(namespace["KEYS"], KEYS)
+
     def test_oltp_keys_match_source_schema(self):
         for dataset, model in TABLES.items():
             self.assertEqual(KEYS[dataset], [column.name for column in model.__table__.primary_key.columns])

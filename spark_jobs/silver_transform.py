@@ -6,7 +6,6 @@ import hashlib
 import json
 import os
 import re
-import sys
 from pathlib import Path
 
 import great_expectations as gx
@@ -15,7 +14,6 @@ from delta.tables import DeltaTable
 from pyspark.sql import DataFrame, SparkSession, Window, functions as F
 from pyspark.sql.types import StringType
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from spark_jobs.silver_schema import KEYS, OLTP_NAMES, SILVER_NAMES
 
 
