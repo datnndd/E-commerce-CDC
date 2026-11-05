@@ -40,10 +40,17 @@ class SilverManifestTest(unittest.TestCase):
         row = SimpleNamespace(
             path="s3://project/test/bronze/postgres_oltp/orders/run_id=1/_manifest.json",
             content=json.dumps(manifest).encode())
-        spark.read.format.return_value.option.return_value.option.return_value.load.return_value.select.return_value.collect.return_value = [row]
+        reader = spark.read.format.return_value
+        recursive = reader.option.return_value
+        manifests_only = recursive.option.return_value
+        include_hidden = manifests_only.option.return_value
+        include_hidden.load.return_value.select.return_value.collect.return_value = [row]
         self.assertEqual(load_manifests_from_s3(spark, "s3://project/test", "orders"), [
             (manifest, "s3://project/test/bronze/postgres_oltp/orders/run_id=1")])
-        spark.read.format.return_value.option.return_value.option.return_value.load.assert_called_once_with(
+        reader.option.assert_called_once_with("recursiveFileLookup", "true")
+        recursive.option.assert_called_once_with("pathGlobFilter", "_manifest.json")
+        manifests_only.option.assert_called_once_with("ignoredPathSegmentRegex", "")
+        include_hidden.load.assert_called_once_with(
             "s3://project/test/bronze/postgres_oltp/orders")
 
     def test_s3_corruption_fails_before_spark_read(self):

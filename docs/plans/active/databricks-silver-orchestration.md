@@ -41,6 +41,7 @@ Out of scope: changing the frozen main source, provisioning credentials or compu
 - [x] Implement the remote Job contract, restore Great Expectations inside the Job, remove duplicate/dead migration code, and correct the Airflow connection contract.
 - [x] Run focused unit tests, DAG import/graph proof, CLI guard, lock/Compose/syntax/diff checks.
 - [x] Reproduce the Databricks Spark Python task's missing `__file__` under `exec(...)`, remove the path bootstrap, and pass the focused regression test.
+- [x] Confirm committed `customers` manifests exist at the Job's S3 root, enable Spark's hidden-file option for `_manifest.json`, and pass the focused reader test.
 - [ ] Run Spark/Delta/GX integration tests in the Linux Silver image; Docker Hub base-image retrieval failed twice, and local Windows JDK 24 cannot start the Spark gateway.
 - [ ] Validate a real isolated Databricks Job and Airflow run when workspace compute is available.
 
@@ -56,6 +57,7 @@ Out of scope: changing the frozen main source, provisioning credentials or compu
 - Connection proof: Compose generated a JSON connection from a fake workspace host/token, Airflow 3.3.2 resolved its host/password, and the DAG tests passed after the duplicate connection requirement was removed. No real authentication was attempted.
 - Integration or end-to-end proof: no successful Spark/Delta/GX or full cloud run. Linux Silver image build failed twice on Docker Hub proxy/base-image fetch; Windows Java 24 fails to start the local Spark gateway. Databricks CLI read-only access failed because its OAuth refresh token expired.
 - Runtime feedback: the owner's Workspace Git-folder Job imported the updated script but raised `NameError` because Databricks executed it without `__file__`. The local `exec(...)` regression test failed with the same exception before the fix and passed afterward with all five Silver manifest tests. The fixed revision has not yet been run on Databricks.
+- Runtime feedback: the next Job reported no `customers` manifests, while read-only S3 inspection found two committed manifests with 99,441 rows each under the exact requested root. Spark's default hidden-file filter skips `_manifest.json`; the new `ignoredPathSegmentRegex` option passed a red/green focused reader test and all five Silver manifest tests. Databricks Runtime 19 supports the option; the current serverless Job environment is version 6, and a live rerun is still required.
 - Repository-required checks: `uv lock --check`, `docker compose config --quiet`, `compileall`, and `git diff --check` passed; rerun after final edits.
 
 ## Result

@@ -51,9 +51,11 @@ def bronze_dataset_subpath(dataset: str) -> str:
 
 def load_manifests_from_s3(spark: SparkSession, s3_root: str, dataset: str) -> list[tuple[dict, str]]:
     path = f"{s3_root.rstrip('/')}/{bronze_dataset_subpath(dataset)}"
+    # Spark hides underscore-prefixed files unless this filter is disabled.
     rows = (spark.read.format("binaryFile")
             .option("recursiveFileLookup", "true")
             .option("pathGlobFilter", "_manifest.json")
+            .option("ignoredPathSegmentRegex", "")
             .load(path).select("path", "content").collect())
     manifests = []
     for row in rows:
