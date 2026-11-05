@@ -11,11 +11,12 @@ not share the Executive purchase-date filter. The Journey page keeps payment,
 delivery, and synthetic-session dates separate. The synthetic funnel is not a
 real customer conversion measure.
 
-## Current state (2026-11-03)
+## Current state (2026-11-05)
 
 - The PBIR validator passed with zero errors and zero warnings. Microsoft Power
   BI Modeling MCP parsed the TMDL model with seven tables and 26 measures.
-- Power BI Desktop opened the PBIP and displayed all five page layouts. The
+- Power BI Desktop opened the PBIP through the report authoring CLI. Fresh
+  screenshots showed all five page layouts without clipped labels. The
   imported tables have **no data yet**; blank KPI values and charts are expected.
 - The first Import refresh of `mart_daily_sales` reached the Databricks
   connector, but the SQL warehouse rejected it: serverless compute is disabled
@@ -24,6 +25,9 @@ real customer conversion measure.
   warehouse is stopped, and there is no listed cluster.
 - Refresh, rendered values, five-number reconciliation, reader review,
   scheduled refresh, and sharing are **not verified**.
+- On 2026-11-05, starting the Databricks SQL warehouse returned `hit your free
+  daily limit`. Retry the Import refresh when compute becomes available; no
+  data-bearing dashboard result was verified in this session.
 
 Import caches source data in Power BI after a successful refresh, so changing
 slicers does not query Databricks for every visual. The initial load and every

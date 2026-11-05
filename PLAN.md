@@ -296,7 +296,7 @@ Local verifier đã chạy 14 singular SQL tests cho business marts, phát hiệ
 **Mục tiêu:** Dashboard trả lời được câu hỏi nghiệp vụ và mọi con số trên đó đều đối soát được về nguồn.
 
 ### Công cụ dashboard
-- Chủ dự án chọn Power BI và chế độ Import cho sáu mart cùng bảng Ops để tránh truy vấn Databricks theo từng visual. PBIP năm trang đã được dựng và kiểm tra cấu trúc ngày 03/11/2026, nhưng chưa có dữ liệu: lần Import đầu tiên bị SQL warehouse từ chối vì workspace không còn đủ điều kiện chạy Serverless Compute. Import vẫn cần warehouse hoạt động khi nạp và refresh. Kiểm chứng đọc `mart_daily_sales` cùng `ops_pipeline_runs`, cách refresh và quyền chia sẻ bản demo còn mở.
+- Chủ dự án chọn Power BI và chế độ Import cho sáu mart cùng bảng Ops để tránh truy vấn Databricks theo từng visual. PBIP năm trang đã được dựng; ngày 05/11/2026, Power BI Authoring MCP đọc được 7 bảng Import và 26 measures, PBIR validation đạt 0 lỗi/0 cảnh báo, và ảnh chụp Desktop cho thấy bố cục cả năm trang hiển thị đầy đủ. Báo cáo vẫn chưa có dữ liệu: lần Import đầu tiên bị SQL warehouse từ chối vì Serverless Compute không khả dụng, còn lần khởi chạy warehouse ngày 05/11 chạm giới hạn miễn phí trong ngày. Import vẫn cần warehouse hoạt động khi nạp và refresh. Kiểm chứng số liệu, cách refresh và quyền chia sẻ bản demo còn mở.
 
 ### Việc cần làm
 - [ ] Kết nối Power BI với sáu business marts Gold; trang Ops đọc `ops_pipeline_runs` từ Giai đoạn 6. Không để dashboard tự join các fact/dim thô để tính KPI.

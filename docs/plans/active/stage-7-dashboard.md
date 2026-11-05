@@ -4,7 +4,7 @@ Date: 2026-11-02
 
 ## Status
 
-Active — five-page PBIP and Import semantic model built; data load blocked by Databricks compute eligibility.
+Active — five-page PBIP and Import semantic model built; all five empty-data layouts reviewed in Desktop. Data load and numerical reconciliation remain blocked by Databricks compute limits.
 
 ## Outcome
 
@@ -42,6 +42,7 @@ Out of scope: new marts, new attribution logic, real clickstream conversion, uns
 - [x] Record the owner's Power BI choice and the existing five-page/mart scope.
 - [x] Build local PBIP with five pages, six marts plus Ops, and Import storage mode.
 - [x] Validate PBIR structure and parse the TMDL model with Microsoft Power BI Modeling MCP.
+- [x] Open the PBIP in Power BI Desktop and review screenshots of all five page layouts without imported data (2026-11-05).
 - [ ] Prove Power BI Desktop connection to one mart and Ops; decide Import/DirectQuery and refresh/sharing path.
 - [ ] Build and inspect five report pages.
 - [ ] Reconcile five dashboard numbers to mart, fact, and OLTP.
@@ -51,10 +52,12 @@ Out of scope: new marts, new attribution logic, real clickstream conversion, uns
 
 - 2026-11-02: The owner selected Power BI. Connection mode and sharing remain open until a workspace-specific test.
 - 2026-11-03: The owner selected Import to avoid per-visual Databricks queries. The first load and later refresh still require SQL compute. The owner has no second workspace/warehouse; retain the PBIP and record the data-load block.
+- 2026-11-05: Power BI Desktop is installed through Microsoft Store. Its executable was discovered and `PBI_DESKTOP_PATH` configured in the user environment. The warehouse start request returned `hit your free daily limit`; keep the approved Databricks Import source and retry when compute is available.
 
 ## Validation
 
 - Focused proof: PBIR validation passed with 0 errors/0 warnings; Power BI Modeling MCP loaded 7 tables and 26 measures from TMDL. Power BI Desktop opened the PBIP and rendered five layouts with empty visuals. A targeted full refresh of `mart_daily_sales` failed with HTTP 400: serverless compute disabled in the workspace's global warehouse config. Direct Databricks SQL connection reported that the workspace is no longer eligible for Serverless Compute. No data-bearing connection smoke test or displayed measure check has passed.
+- 2026-11-05 focused proof: fresh PBIR validation passed with 0 errors/0 warnings. The locally launched Microsoft Power BI Authoring MCP connected to the PBIP TMDL folder and listed seven Import tables and 26 measures. MCP also retrieved AOV, cancellation, late-delivery, weighted delivery-days/review-score, and synthetic purchase-rate DAX; their definitions match the approved mart aggregation rules. Power BI Desktop opened the current PBIP through `powerbi-report-author`; fresh screenshots of all five pages showed readable titles, slicers, KPI labels, tables, and the synthetic-funnel caveat, with no clipping observed. Every data visual is still empty. `databricks warehouses start` failed with the free daily limit message, so no current data load or numerical proof was possible.
 - Integration or end-to-end proof: five-number dashboard-to-OLTP reconciliation and reader check are pending.
 - Repository-required checks: `git diff --check` passed for tracked files; new documents were reviewed for trailing whitespace.
 
