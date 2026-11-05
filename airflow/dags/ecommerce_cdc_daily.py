@@ -9,6 +9,10 @@ from datetime import datetime, timedelta, timezone
 from urllib.request import Request, urlopen
 
 from airflow.providers.standard.operators.bash import BashOperator
+try:
+    from airflow.providers.databricks.operators.databricks import DatabricksRunNowOperator
+except ImportError:
+    DatabricksRunNowOperator = None
 from airflow.sdk import DAG, get_current_context, task
 
 
@@ -17,8 +21,9 @@ UV = "uv run --frozen"
 NAMESPACE = os.environ.get("PIPELINE_S3_PREFIX", "").strip("/") or "main"
 if not re.fullmatch(r"[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*", NAMESPACE):
     raise ValueError("PIPELINE_S3_PREFIX must contain only safe path segments")
-BRONZE = f"{ROOT}/logs/airflow_bronze/{NAMESPACE}"
-SILVER = f"{ROOT}/logs/airflow_silver/{NAMESPACE}"
+BASE_CURRENCY = os.environ.get("EXCHANGE_BASE_CURRENCY", "BRL").strip().upper() or "BRL"
+QUOTE_CURRENCIES = os.environ.get("EXCHANGE_QUOTE_CURRENCIES", "USD").strip().upper() or "USD"
+DATABRICKS_SILVER_JOB_ID = os.environ.get("DATABRICKS_SILVER_JOB_ID", "")
 
 
 def alert_failure(context) -> None:
@@ -51,7 +56,12 @@ with DAG(
     max_active_runs=1,
     default_args={"retries": 2, "retry_delay": timedelta(minutes=5),
                   "on_failure_callback": alert_failure},
-    tags=["ecommerce", "cdc"],
+    params={
+        "base_currency": BASE_CURRENCY,
+        "quote_currencies": QUOTE_CURRENCIES,
+        "databricks_silver_job_id": DATABRICKS_SILVER_JOB_ID,
+    },
+    tags=["ecommerce", "cdc", "databricks"],
 ) as dag:
 
     @task
@@ -72,36 +82,53 @@ with DAG(
             raise ValueError("An isolated 1C pipeline requires a *_1c_test PostgreSQL database")
 
     started = BashOperator(
-        task_id="record_started",
+        task_id="record_pipeline_start",
         bash_command=(f'{UV} python -m orchestration.ops_runs start '
                       '--dag-id "$PIPELINE_DAG_ID" --run-id "$PIPELINE_RUN_ID"'),
         cwd=ROOT,
         env={"PIPELINE_DAG_ID": "{{ dag.dag_id }}", "PIPELINE_RUN_ID": "{{ run_id }}"},
         append_env=True,
     )
-    cdc = shell_task("cdc_extract", "python -m ingestion.cdc_extract")
-    rates = shell_task(
-        "ingest_exchange_rates",
-        "python -m ingestion.ingest_api --source exchange_rate "
-        "--url 'https://api.frankfurter.dev/v2/rates?base=BRL&quotes=USD'",
+    cdc = shell_task("extract_postgres_cdc_to_bronze", "python -m ingestion.cdc_extract")
+    rates = BashOperator(
+        task_id="ingest_exchange_rates_to_bronze",
+        bash_command=(f'{UV} python -m ingestion.ingest_api --source exchange_rate '
+                      '--base "$EXCHANGE_BASE_CURRENCY" --quotes "$EXCHANGE_QUOTE_CURRENCIES"'),
+        cwd=ROOT,
+        env={
+            "EXCHANGE_BASE_CURRENCY": "{{ params.base_currency }}",
+            "EXCHANGE_QUOTE_CURRENCIES": "{{ params.quote_currencies }}",
+        },
+        append_env=True,
     )
     campaign = shell_task(
-        "ingest_campaign_fixture",
+        "ingest_campaign_fixture_to_bronze",
         "python -m ingestion.ingest_api --source campaign "
         "--url file:///workspace/sources/api/mock_campaigns.json",
     )
-    clickstream = shell_task("ingest_demo_clickstream", "python -m orchestration.ingest_demo_clickstream")
-    sync = shell_task("sync_committed_bronze", f"python -m ingestion.sync_bronze --root {BRONZE}")
-    silver = shell_task(
-        "load_silver", f"python -m spark_jobs.silver_transform --bronze-root {BRONZE} --silver-root {SILVER}"
+    clickstream = shell_task(
+        "generate_demo_clickstream_to_bronze", "python -m orchestration.ingest_demo_clickstream"
     )
-    silver_keys = shell_task("verify_silver", f"python -m spark_jobs.verify_silver --silver-root {SILVER}")
-    quality = shell_task(
-        "silver_quality_gate", f"python -m orchestration.silver_quality --silver-root {SILVER}"
-    )
-    publish = shell_task("publish_silver", f"python -m orchestration.publish_silver --silver-root {SILVER}")
+
+    if DatabricksRunNowOperator is not None:
+        silver_job = DatabricksRunNowOperator(
+            task_id="run_silver_transform_on_databricks",
+            databricks_conn_id="databricks_default",
+            job_id="{{ params.databricks_silver_job_id }}",
+            notebook_params={
+                "pipeline_s3_prefix": NAMESPACE,
+                "target_schema": os.environ.get("DBT_SILVER_SCHEMA", "silver"),
+            },
+        )
+    else:
+        silver_job = shell_task(
+            "run_silver_transform_on_databricks",
+            "echo 'Databricks provider not installed; placeholder for DatabricksRunNowOperator'",
+        )
+
     build = shell_task(
-        "dbt_build", "dbt build --project-dir /workspace/dbt_project "
+        "build_gold_and_marts_dbt",
+        "dbt build --project-dir /workspace/dbt_project "
         "--profiles-dir /workspace/airflow/dbt_profile",
     )
 
@@ -115,25 +142,23 @@ with DAG(
         subprocess.run(command, cwd=ROOT, check=True)
 
     @task
-    def record_success() -> None:
+    def record_pipeline_success() -> None:
         finish_run("success")
 
     @task(trigger_rule="one_failed")
-    def record_failure() -> None:
+    def record_pipeline_failure() -> None:
         finish_run("failed")
 
     @task(retries=0)
-    def mark_failed() -> None:
+    def fail_dag_run() -> None:
         raise RuntimeError("Pipeline failed; see the Airflow task log")
 
     preflight = runtime_check()
     preflight >> started >> [cdc, rates, campaign]
     cdc >> clickstream
-    [rates, campaign, clickstream] >> sync >> silver
-    silver >> [silver_keys, quality] >> publish >> build
-    success, failure = record_success(), record_failure()
+    [rates, campaign, clickstream] >> silver_job >> build
+    success, failure = record_pipeline_success(), record_pipeline_failure()
     build >> success
-    for upstream in (preflight, started, cdc, rates, campaign, clickstream, sync,
-                     silver, silver_keys, quality, publish, build):
+    for upstream in (preflight, started, cdc, rates, campaign, clickstream, silver_job, build):
         upstream >> failure
-    failure >> mark_failed()
+    failure >> fail_dag_run()

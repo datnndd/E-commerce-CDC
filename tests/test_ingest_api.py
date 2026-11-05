@@ -9,7 +9,7 @@ from io import BytesIO
 from unittest.mock import Mock, patch
 from urllib.error import HTTPError, URLError
 
-from ingestion.ingest_api import fetch_json, ingest_api
+from ingestion.ingest_api import exchange_rate_url, fetch_json, ingest_api
 
 
 class IngestApiTest(unittest.TestCase):
@@ -17,7 +17,8 @@ class IngestApiTest(unittest.TestCase):
         body = b'{"rates":{"USD":0.18},"base":"BRL"}'
         s3 = Mock()
         started_at = datetime(2026, 10, 30, 9, 15, tzinfo=timezone.utc)
-        with patch("ingestion.ingest_api.fetch_json", return_value=body):
+        with patch.dict(os.environ, {"PIPELINE_S3_PREFIX": ""}), \
+             patch("ingestion.ingest_api.fetch_json", return_value=body):
             manifest = ingest_api("exchange_rate", "http://localhost/rates", s3, "test-bucket", started_at)
 
         prefix = "bronze/api/exchange_rate/dt=2026-10-30/run_id=20261030T091500000000/"
@@ -61,3 +62,27 @@ class IngestApiTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "HTTP 401"):
                 fetch_json("http://localhost/private")
         self.assertEqual(open_url.call_count, 1)
+
+    def test_exchange_rate_url_supports_env_and_multiple_quotes_and_rejects_invalid_codes(self):
+        with patch("ingestion.ingest_api.dotenv_values", return_value={}), \
+             patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("EXCHANGE_BASE_CURRENCY", None)
+            os.environ.pop("EXCHANGE_QUOTE_CURRENCIES", None)
+            self.assertEqual(
+                exchange_rate_url(),
+                "https://api.frankfurter.dev/v2/rates?base=BRL&quotes=USD",
+            )
+            self.assertEqual(
+                exchange_rate_url(base="brl", quotes="usd, eur", start_date="2016-09-01", end_date="2018-10-17"),
+                "https://api.frankfurter.dev/v2/rates?from=2016-09-01&to=2018-10-17&base=BRL&quotes=USD,EUR",
+            )
+        with patch("ingestion.ingest_api.dotenv_values", return_value={}), \
+             patch.dict(os.environ, {"EXCHANGE_BASE_CURRENCY": "eur", "EXCHANGE_QUOTE_CURRENCIES": "usd,gbp"}):
+            self.assertEqual(
+                exchange_rate_url(),
+                "https://api.frankfurter.dev/v2/rates?base=EUR&quotes=USD,GBP",
+            )
+        with self.assertRaisesRegex(ValueError, "Invalid base currency code"):
+            exchange_rate_url(base="BRL&inject=1")
+        with self.assertRaisesRegex(ValueError, "Invalid quote currency code"):
+            exchange_rate_url(quotes="USD,INVALID")

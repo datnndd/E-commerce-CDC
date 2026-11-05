@@ -7,14 +7,15 @@ import tempfile
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import Mock
+import os
+from unittest.mock import Mock, patch
 
 from ingestion.ingest_logs import ingest_logs
 
 
 class IngestLogsTest(unittest.TestCase):
     def test_gzip_precedes_committed_manifest(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
+        with tempfile.TemporaryDirectory() as temp_dir, patch.dict(os.environ, {'PIPELINE_S3_PREFIX': ''}):
             source = Path(temp_dir) / "simulator.jsonl"
             raw = b'{"event_id":"e1"}\n\n{"event_id":"e2"}'
             source.write_bytes(raw)
@@ -37,7 +38,7 @@ class IngestLogsTest(unittest.TestCase):
         self.assertEqual(json.loads(s3.put_object.call_args.kwargs["Body"]), manifest)
 
     def test_invalid_source_or_upload_failure_has_no_manifest(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
+        with tempfile.TemporaryDirectory() as temp_dir, patch.dict(os.environ, {'PIPELINE_S3_PREFIX': ''}):
             source = Path(temp_dir) / "invalid.jsonl"
             source.write_text("not json\n", encoding="utf-8")
             s3 = Mock()

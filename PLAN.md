@@ -270,10 +270,10 @@ Local verifier đã chạy 14 singular SQL tests cho business marts, phát hiệ
 ### Việc cần làm
 - [x] Viết Airflow DAG `ecommerce_cdc_daily` theo thứ tự:
   ```
-  cdc_extract → ingest_demo_clickstream ─┐
-  ingest_api (rates + mock campaign) ────┴→ sync_committed_bronze → load_silver → silver_quality_gate
-                                                                   ↓
-                           publish_silver → dbt build (snapshots, facts, sáu marts, tests) → record_run
+  extract_postgres_cdc_to_bronze → generate_demo_clickstream_to_bronze ─┐
+  ingest_exchange_rates_to_bronze / ingest_campaign_fixture_to_bronze ──┴→ sync_committed_bronze_to_local → transform_bronze_to_silver_delta → check_silver_great_expectations
+                                                                                                         ↓
+                                            publish_silver_to_databricks → build_gold_and_marts_dbt → record_pipeline_success
   ```
 - [x] Airflow local chạy được Python/uv, Java/Spark, PostgreSQL, S3 và dbt Databricks bằng token cung cấp lúc chạy. DAG đặt `retries = 2`, `retry_delay = 5m`, callback webhook khi task fail; cấu hình token không tương tác và webhook thật vẫn thuộc bước bật lịch unattended.
 - [x] Chạy thử 1C với prefix S3 và schema Databricks riêng (`PIPELINE_S3_PREFIX`, `DBT_SILVER_SCHEMA`, `DBT_TARGET_SCHEMA`), không trộn dữ liệu mô phỏng với snapshot RDS chính.

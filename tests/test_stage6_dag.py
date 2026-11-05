@@ -16,20 +16,25 @@ class Stage6DagTest(unittest.TestCase):
         self.assertFalse(bag.import_errors)
         dag = bag.dags["ecommerce_cdc_daily"]
         self.assertEqual(dag.max_active_runs, 1)
-        self.assertEqual(dag.task_dict["record_failure"].trigger_rule, "one_failed")
-        self.assertEqual(dag.task_dict["record_failure"].upstream_task_ids,
-                         set(dag.task_ids) - {"record_success", "record_failure", "mark_failed"})
-        self.assertEqual(dag.task_dict["mark_failed"].upstream_task_ids, {"record_failure"})
-        self.assertEqual(dag.task_dict["mark_failed"].retries, 0)
-        self.assertEqual(dag.task_dict["record_success"].upstream_task_ids, {"dbt_build"})
-        self.assertEqual(dag.task_dict["publish_silver"].upstream_task_ids,
-                         {"verify_silver", "silver_quality_gate"})
-        self.assertEqual(dag.task_dict["dbt_build"].upstream_task_ids, {"publish_silver"})
-        self.assertEqual(dag.task_dict["silver_quality_gate"].upstream_task_ids, {"load_silver"})
-        self.assertEqual(dag.task_dict["sync_committed_bronze"].upstream_task_ids, {
-            "ingest_exchange_rates", "ingest_campaign_fixture", "ingest_demo_clickstream",
+        self.assertEqual(dag.task_dict["record_pipeline_failure"].trigger_rule, "one_failed")
+        self.assertEqual(
+            dag.task_dict["record_pipeline_failure"].upstream_task_ids,
+            set(dag.task_ids) - {"record_pipeline_success", "record_pipeline_failure", "fail_dag_run"},
+        )
+        self.assertEqual(dag.task_dict["fail_dag_run"].upstream_task_ids, {"record_pipeline_failure"})
+        self.assertEqual(dag.task_dict["fail_dag_run"].retries, 0)
+        self.assertEqual(dag.task_dict["record_pipeline_success"].upstream_task_ids, {"build_gold_and_marts_dbt"})
+        self.assertEqual(dag.task_dict["build_gold_and_marts_dbt"].upstream_task_ids, {"run_silver_transform_on_databricks"})
+        self.assertEqual(dag.task_dict["run_silver_transform_on_databricks"].upstream_task_ids, {
+            "ingest_exchange_rates_to_bronze", "ingest_campaign_fixture_to_bronze", "generate_demo_clickstream_to_bronze",
         })
-        self.assertEqual(dag.task_dict["ingest_demo_clickstream"].upstream_task_ids, {"cdc_extract"})
+        self.assertEqual(dag.task_dict["generate_demo_clickstream_to_bronze"].upstream_task_ids, {"extract_postgres_cdc_to_bronze"})
+        self.assertEqual(dag.params["base_currency"], "BRL")
+        self.assertEqual(dag.params["quote_currencies"], "USD")
+        self.assertIn("databricks_silver_job_id", dag.params)
+        rates_task = dag.task_dict["ingest_exchange_rates_to_bronze"]
+        self.assertEqual(rates_task.env["EXCHANGE_BASE_CURRENCY"], "{{ params.base_currency }}")
+        self.assertEqual(rates_task.env["EXCHANGE_QUOTE_CURRENCIES"], "{{ params.quote_currencies }}")
 
     def test_webhook_alert_contains_task_context_without_secret(self):
         from types import SimpleNamespace

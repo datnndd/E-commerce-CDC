@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import re
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
@@ -10,8 +11,13 @@ from urllib.request import Request, urlopen
 from databricks import sql
 
 from ingestion.s3 import pipeline_s3_prefix, s3_client_and_bucket
-from orchestration.publish_silver import identifier
 from spark_jobs.silver_transform import SILVER_NAMES
+
+
+def identifier(value: str) -> str:
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", value):
+        raise ValueError(f"Unsafe SQL identifier: {value!r}")
+    return f"`{value}`"
 
 
 GOLD_FACTS = (

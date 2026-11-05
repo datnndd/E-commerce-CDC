@@ -11,12 +11,11 @@ import psycopg
 from psycopg import IsolationLevel, sql
 
 from ingestion.cdc_extract import TABLES, utc_text, write_parquet
-from ingestion.ingest_api import ingest_api
+from ingestion.ingest_api import exchange_rate_url, ingest_api
 from ingestion.ingest_logs import ingest_logs
 from sources.oltp.load_olist import connection_settings, database_settings
 
 
-EXCHANGE_URL = "https://api.frankfurter.dev/v2/rates?from=2016-09-01&to=2018-10-17&base=BRL&quotes=USD"
 CAMPAIGN_FIXTURE = Path(__file__).resolve().parents[1] / "sources" / "api" / "mock_campaigns.json"
 
 
@@ -92,7 +91,7 @@ def main() -> None:
     store = LocalObjectStore(args.root)
     counts = materialize_oltp(store)
     clickstream = ingest_logs(args.clickstream, store, "local")
-    ingest_api("exchange_rate", EXCHANGE_URL, store, "local")
+    ingest_api("exchange_rate", exchange_rate_url(start_date="2016-09-01", end_date="2018-10-17"), store, "local")
     ingest_api("campaign", CAMPAIGN_FIXTURE.as_uri(), store, "local")
     print(f"Local Bronze: {counts}; clickstream events={clickstream['row_count']}; API responses=2")
 
