@@ -1,51 +1,21 @@
-"""Run Great Expectations checkpoints on local Delta Silver before publication."""
+"""Run the Silver quality checks against a local Delta directory."""
 
 import argparse
-from datetime import datetime, timezone
 from pathlib import Path
 
-import great_expectations as gx
-
-from spark_jobs.silver_transform import local_spark
-
-
-def check_frame(context, name: str, frame, expectations: list) -> bool:
-    source = context.data_sources.add_spark(name=f"source_{name}")
-    asset = source.add_dataframe_asset(name=f"asset_{name}")
-    batch = asset.add_batch_definition_whole_dataframe("current")
-    suite = context.suites.add(gx.ExpectationSuite(name=f"suite_{name}"))
-    for expectation in expectations:
-        suite.add_expectation(expectation)
-    definition = context.validation_definitions.add(
-        gx.ValidationDefinition(name=f"validation_{name}", data=batch, suite=suite)
-    )
-    checkpoint = context.checkpoints.add(
-        gx.Checkpoint(name=f"checkpoint_{name}", validation_definitions=[definition])
-    )
-    return checkpoint.run(batch_parameters={"dataframe": frame}).success
+from spark_jobs.silver_transform import local_spark, validate_frames
 
 
 def validate(silver_root: Path) -> dict[str, bool]:
     spark = local_spark()
     try:
-        context = gx.get_context(mode="ephemeral")
-        checks = {
-            "slv_orders": [gx.expectations.ExpectColumnValuesToNotBeNull(column="customer_id")],
-            "slv_payments": [gx.expectations.ExpectColumnValuesToBeBetween(column="payment_value", min_value=0)],
-            "slv_clickstream_events": [
-                gx.expectations.ExpectColumnValuesToBeBetween(
-                    column="event_timestamp", max_value=datetime.now(timezone.utc)
-                )
-            ],
-        }
-        results = {}
-        for table, expectations in checks.items():
+        frames = {}
+        for table in ("slv_orders", "slv_payments", "slv_clickstream_events"):
             path = silver_root / table
             if not path.is_dir():
                 raise FileNotFoundError(f"Missing Silver table: {path}")
-            frame = spark.read.format("delta").load(str(path))
-            results[table] = check_frame(context, table, frame, expectations)
-        return results
+            frames[table] = spark.read.format("delta").load(str(path))
+        return validate_frames(frames)
     finally:
         spark.stop()
 

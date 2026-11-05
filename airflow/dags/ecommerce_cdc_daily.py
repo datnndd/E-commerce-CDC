@@ -1,4 +1,4 @@
-"""Local Bronze/Silver orchestration followed by Databricks Gold and marts."""
+"""Upload Bronze, run Databricks Silver, then build Gold and marts."""
 
 import json
 import logging
@@ -8,18 +8,15 @@ import subprocess
 from datetime import datetime, timedelta, timezone
 from urllib.request import Request, urlopen
 
+from airflow.providers.databricks.operators.databricks import DatabricksRunNowOperator
 from airflow.providers.standard.operators.bash import BashOperator
-try:
-    from airflow.providers.databricks.operators.databricks import DatabricksRunNowOperator
-except ImportError:
-    DatabricksRunNowOperator = None
 from airflow.sdk import DAG, get_current_context, task
 
 
 ROOT = "/workspace"
 UV = "uv run --frozen"
-NAMESPACE = os.environ.get("PIPELINE_S3_PREFIX", "").strip("/") or "main"
-if not re.fullmatch(r"[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*", NAMESPACE):
+S3_PREFIX = os.environ.get("PIPELINE_S3_PREFIX", "").strip("/")
+if S3_PREFIX and not re.fullmatch(r"[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*", S3_PREFIX):
     raise ValueError("PIPELINE_S3_PREFIX must contain only safe path segments")
 BASE_CURRENCY = os.environ.get("EXCHANGE_BASE_CURRENCY", "BRL").strip().upper() or "BRL"
 QUOTE_CURRENCIES = os.environ.get("EXCHANGE_QUOTE_CURRENCIES", "USD").strip().upper() or "USD"
@@ -59,7 +56,6 @@ with DAG(
     params={
         "base_currency": BASE_CURRENCY,
         "quote_currencies": QUOTE_CURRENCIES,
-        "databricks_silver_job_id": DATABRICKS_SILVER_JOB_ID,
     },
     tags=["ecommerce", "cdc", "databricks"],
 ) as dag:
@@ -68,17 +64,20 @@ with DAG(
     def runtime_check() -> None:
         required = (
             "S3_BUCKET", "AIRFLOW_S3_BUCKET", "DBT_DATABRICKS_HOST", "DBT_DATABRICKS_HTTP_PATH",
-            "DBT_CATALOG", "DATABRICKS_TOKEN", "AIRFLOW_ALERT_WEBHOOK_URL",
+            "DBT_CATALOG", "DATABRICKS_TOKEN", "DATABRICKS_SILVER_JOB_ID",
+            "AIRFLOW_ALERT_WEBHOOK_URL",
         )
         missing = [name for name in required if not os.environ.get(name)]
         if missing:
             raise ValueError(f"Configure these Airflow runtime variables: {', '.join(missing)}")
-        if NAMESPACE != "main" and (
+        if not os.environ["DATABRICKS_SILVER_JOB_ID"].isdigit():
+            raise ValueError("DATABRICKS_SILVER_JOB_ID must be a numeric Databricks Job ID")
+        if S3_PREFIX and (
             os.environ.get("DBT_SILVER_SCHEMA", "silver") == "silver"
             or os.environ.get("DBT_TARGET_SCHEMA", "analytics_dev") == "analytics_dev"
         ):
             raise ValueError("An isolated PIPELINE_S3_PREFIX requires separate DBT_SILVER_SCHEMA and DBT_TARGET_SCHEMA")
-        if NAMESPACE != "main" and not os.environ.get("POSTGRES_DB", "").endswith("_1c_test"):
+        if S3_PREFIX and not os.environ.get("POSTGRES_DB", "").endswith("_1c_test"):
             raise ValueError("An isolated 1C pipeline requires a *_1c_test PostgreSQL database")
 
     started = BashOperator(
@@ -110,21 +109,20 @@ with DAG(
         "generate_demo_clickstream_to_bronze", "python -m orchestration.ingest_demo_clickstream"
     )
 
-    if DatabricksRunNowOperator is not None:
-        silver_job = DatabricksRunNowOperator(
-            task_id="run_silver_transform_on_databricks",
-            databricks_conn_id="databricks_default",
-            job_id="{{ params.databricks_silver_job_id }}",
-            notebook_params={
-                "pipeline_s3_prefix": NAMESPACE,
-                "target_schema": os.environ.get("DBT_SILVER_SCHEMA", "silver"),
-            },
-        )
-    else:
-        silver_job = shell_task(
-            "run_silver_transform_on_databricks",
-            "echo 'Databricks provider not installed; placeholder for DatabricksRunNowOperator'",
-        )
+    bucket = os.environ.get("AIRFLOW_S3_BUCKET", "")
+    bronze_root = f"s3://{bucket}/{S3_PREFIX}" if S3_PREFIX else f"s3://{bucket}"
+    silver_root = f"{bronze_root}/silver/pipeline_live"
+    silver_job = DatabricksRunNowOperator(
+        task_id="run_silver_transform_on_databricks",
+        databricks_conn_id="databricks_default",
+        job_id=DATABRICKS_SILVER_JOB_ID,
+        python_params=[
+            "--bronze-root", bronze_root,
+            "--silver-root", silver_root,
+            "--catalog", os.environ.get("DBT_CATALOG", ""),
+            "--schema", os.environ.get("DBT_SILVER_SCHEMA", "silver"),
+        ],
+    )
 
     build = shell_task(
         "build_gold_and_marts_dbt",

@@ -11,7 +11,7 @@ from urllib.request import Request, urlopen
 from databricks import sql
 
 from ingestion.s3 import pipeline_s3_prefix, s3_client_and_bucket
-from spark_jobs.silver_transform import SILVER_NAMES
+from spark_jobs.silver_schema import SILVER_NAMES
 
 
 def identifier(value: str) -> str:

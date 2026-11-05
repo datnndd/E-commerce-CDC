@@ -170,6 +170,16 @@ class SilverLocalTest(unittest.TestCase):
             run_dataset(self.spark, self.root, self.silver, "orders")
         self.assertEqual([row.order_id for row in self.table_rows("slv_orders")], ["o1"])
 
+    def test_negative_payment_rejected_before_silver_merge(self):
+        now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        self.publish("order_payments", "20261101T000000", [{
+            "order_id": "o1", "payment_sequential": 1, "payment_value": -1.0,
+            "updated_at": now, "ingested_at": now,
+        }])
+        with self.assertRaisesRegex(ValueError, "negative payment values"):
+            run_dataset(self.spark, self.root, self.silver, "order_payments")
+        self.assertFalse((self.silver / "slv_payments").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

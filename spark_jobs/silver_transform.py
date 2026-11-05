@@ -1,37 +1,3 @@
-"""Read committed local Bronze runs and merge them into local Delta Silver."""
-
-import argparse
-import hashlib
-import json
-from pathlib import Path
-
-from delta import configure_spark_with_delta_pip
-from delta.tables import DeltaTable
-from pyspark.sql import DataFrame, SparkSession, Window, functions as F
-from pyspark.sql.types import StringType
-
-from ingestion.cdc_extract import TABLES
-
-
-OLTP_NAMES = {
-    "customers": "slv_customers",
-    "geolocation": "slv_geolocation",
-    "product_category_name_translation": "slv_category_translation",
-    "products": "slv_products",
-    "sellers": "slv_sellers",
-    "orders": "slv_orders",
-    "order_items": "slv_order_items",
-    "order_payments": "slv_payments",
-    "order_reviews": "slv_reviews",
-}
-SILVER_NAMES = {**OLTP_NAMES, "clickstream": "slv_clickstream_events",
-                "exchange_rate": "slv_exchange_rates", "campaign": "slv_campaigns"}
-KEYS = {name: [column.name for column in TABLES[name].__table__.primary_key.columns]
-        for name in OLTP_NAMES}
-KEYS.update({"clickstream": ["event_id"], "exchange_rate": ["date", "base", "quote"],
-             "campaign": ["campaign_id"]})
-
-
 """Read committed Bronze runs and merge them into Delta Silver (local or Databricks)."""
 
 import argparse
@@ -39,35 +5,18 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import os
+import re
+import sys
 from pathlib import Path
-from urllib.parse import urlsplit
 
-import boto3
+import great_expectations as gx
 from delta import configure_spark_with_delta_pip
 from delta.tables import DeltaTable
 from pyspark.sql import DataFrame, SparkSession, Window, functions as F
 from pyspark.sql.types import StringType
 
-from ingestion.cdc_extract import TABLES
-
-
-OLTP_NAMES = {
-    "customers": "slv_customers",
-    "geolocation": "slv_geolocation",
-    "product_category_name_translation": "slv_category_translation",
-    "products": "slv_products",
-    "sellers": "slv_sellers",
-    "orders": "slv_orders",
-    "order_items": "slv_order_items",
-    "order_payments": "slv_payments",
-    "order_reviews": "slv_reviews",
-}
-SILVER_NAMES = {**OLTP_NAMES, "clickstream": "slv_clickstream_events",
-                "exchange_rate": "slv_exchange_rates", "campaign": "slv_campaigns"}
-KEYS = {name: [column.name for column in TABLES[name].__table__.primary_key.columns]
-        for name in OLTP_NAMES}
-KEYS.update({"clickstream": ["event_id"], "exchange_rate": ["date", "base", "quote"],
-             "campaign": ["campaign_id"]})
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from spark_jobs.silver_schema import KEYS, OLTP_NAMES, SILVER_NAMES
 
 
 def get_spark() -> SparkSession:
@@ -94,15 +43,6 @@ def is_s3_uri(path: str) -> bool:
     return str(path).startswith("s3://") or str(path).startswith("s3a://")
 
 
-def parse_s3_uri(uri: str) -> tuple[str, str]:
-    parts = urlsplit(uri)
-    bucket = parts.netloc
-    prefix = parts.path.lstrip("/")
-    if prefix and not prefix.endswith("/"):
-        prefix += "/"
-    return bucket, prefix
-
-
 def bronze_dataset_subpath(dataset: str) -> str:
     if dataset in OLTP_NAMES:
         return f"bronze/postgres_oltp/{dataset}"
@@ -111,27 +51,37 @@ def bronze_dataset_subpath(dataset: str) -> str:
     return f"bronze/api/{dataset}"
 
 
-def load_manifests_from_s3(s3_root: str, dataset: str) -> list[tuple[dict, str]]:
-    bucket, base_prefix = parse_s3_uri(s3_root)
-    prefix = base_prefix + bronze_dataset_subpath(dataset) + "/"
-    s3 = boto3.client("s3")
+def load_manifests_from_s3(spark: SparkSession, s3_root: str, dataset: str) -> list[tuple[dict, str]]:
+    path = f"{s3_root.rstrip('/')}/{bronze_dataset_subpath(dataset)}"
+    rows = (spark.read.format("binaryFile")
+            .option("recursiveFileLookup", "true")
+            .option("pathGlobFilter", "_manifest.json")
+            .load(path).select("path", "content").collect())
     manifests = []
-    paginator = s3.get_paginator("list_objects_v2")
-    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
-        for obj in page.get("Contents", []):
-            key = obj["Key"]
-            if key.endswith("/_manifest.json"):
-                body = s3.get_object(Bucket=bucket, Key=key)["Body"].read().decode("utf-8")
-                manifest = json.loads(body)
-                manifest_dir_uri = f"s3://{bucket}/{key.rsplit('/', 1)[0]}"
-                manifests.append((manifest, manifest_dir_uri))
+    for row in rows:
+        manifest = json.loads(row.content.decode("utf-8"))
+        manifests.append((manifest, row.path.rsplit("/", 1)[0]))
     return sorted(manifests, key=lambda item: item[0].get("started_at", ""))
+
+
+def verify_manifest_file(path: str, file: dict, spark: SparkSession | None = None) -> None:
+    if is_s3_uri(path):
+        row = (spark.read.format("binaryFile").load(path)
+               .select(F.length("content").alias("size"), F.sha2("content", 256).alias("sha"))
+               .first())
+        size, digest = row.size, row.sha
+    else:
+        with Path(path).open("rb") as stream:
+            size = Path(path).stat().st_size
+            digest = hashlib.file_digest(stream, "sha256").hexdigest()
+    if size != file["size_bytes"] or digest != file["sha256"]:
+        raise ValueError(f"{path}: size or SHA-256 differs from manifest")
 
 
 def committed_frames(spark: SparkSession, root: str, dataset: str) -> DataFrame:
     frames = []
     if is_s3_uri(root):
-        manifest_entries = load_manifests_from_s3(root, dataset)
+        manifest_entries = load_manifests_from_s3(spark, root, dataset)
     else:
         root_path = Path(root)
         local_dir = root_path / bronze_dataset_subpath(dataset)
@@ -156,12 +106,15 @@ def committed_frames(spark: SparkSession, root: str, dataset: str) -> DataFrame:
             if Path(name).name != name or name in (".", ".."):
                 raise ValueError(f"Unsafe file name in manifest: {name}")
             file_path = f"{manifest_dir}/{name}"
+            verify_manifest_file(file_path, file, spark)
             if dataset in OLTP_NAMES:
                 frame = spark.read.parquet(file_path)
             else:
                 frame = spark.read.option("multiLine", dataset != "clickstream").json(file_path)
                 if dataset == "campaign":
                     frame = frame.select("synthetic", F.explode("campaigns").alias("campaign")).select("synthetic", "campaign.*")
+            if "row_count" in file and frame.count() != file["row_count"]:
+                raise ValueError(f"{file_path}: row count differs from manifest")
             run_frames.append(frame)
 
         run = run_frames[0]
@@ -274,10 +227,42 @@ def merge_delta(spark: SparkSession, frame: DataFrame, path: str, keys: list[str
 def run_dataset(spark: SparkSession, bronze_root: str, silver_root: str, dataset: str) -> tuple[int, int]:
     root_str = str(silver_root).rstrip("/")
     good, bad = normalize(dataset, committed_frames(spark, str(bronze_root), dataset))
+    if dataset == "order_payments" and good.filter(F.col("payment_value") < 0).limit(1).count():
+        raise ValueError("Quality gate failed: slv_payments has negative payment values")
+    if dataset == "clickstream" and good.filter(F.col("event_timestamp") > F.current_timestamp()).limit(1).count():
+        raise ValueError("Quality gate failed: slv_clickstream_events has future event timestamps")
     valid_count, bad_count = good.count(), bad.count()
     merge_delta(spark, good, f"{root_str}/{SILVER_NAMES[dataset]}", KEYS[dataset])
     merge_delta(spark, bad, f"{root_str}/silver_quarantine", ["record_id"], quarantine=True)
     return valid_count, bad_count
+
+
+def check_frame(context, name: str, frame: DataFrame, expectations: list) -> bool:
+    source = context.data_sources.add_spark(name=f"source_{name}")
+    asset = source.add_dataframe_asset(name=f"asset_{name}")
+    batch = asset.add_batch_definition_whole_dataframe("current")
+    suite = context.suites.add(gx.ExpectationSuite(name=f"suite_{name}"))
+    for expectation in expectations:
+        suite.add_expectation(expectation)
+    definition = context.validation_definitions.add(
+        gx.ValidationDefinition(name=f"validation_{name}", data=batch, suite=suite)
+    )
+    checkpoint = context.checkpoints.add(
+        gx.Checkpoint(name=f"checkpoint_{name}", validation_definitions=[definition])
+    )
+    return checkpoint.run(batch_parameters={"dataframe": frame}).success
+
+
+def validate_frames(frames: dict[str, DataFrame]) -> dict[str, bool]:
+    context = gx.get_context(mode="ephemeral")
+    checks = {
+        "slv_orders": [gx.expectations.ExpectColumnValuesToNotBeNull(column="customer_id")],
+        "slv_payments": [gx.expectations.ExpectColumnValuesToBeBetween(column="payment_value", min_value=0)],
+        "slv_clickstream_events": [gx.expectations.ExpectColumnValuesToBeBetween(
+            column="event_timestamp", max_value=datetime.now(timezone.utc))],
+    }
+    return {name: check_frame(context, name, frames[name], expectations)
+            for name, expectations in checks.items()}
 
 
 def verify_silver_quality(spark: SparkSession, silver_root: str) -> None:
@@ -307,17 +292,9 @@ def verify_silver_quality(spark: SparkSession, silver_root: str) -> None:
     if missing_orders or missing_products:
         raise ValueError(f"Clickstream purchase joins: {missing_orders} missing orders, {missing_products} missing products")
 
-    null_customers = tables["orders"].filter(F.col("customer_id").isNull()).count()
-    if null_customers > 0:
-        raise ValueError(f"Quality gate failed: slv_orders has {null_customers} null customer_ids")
-
-    negative_payments = tables["order_payments"].filter(F.col("payment_value") < 0).count()
-    if negative_payments > 0:
-        raise ValueError(f"Quality gate failed: slv_payments has {negative_payments} negative payment values")
-
-    future_events = tables["clickstream"].filter(F.col("event_timestamp") > F.current_timestamp()).count()
-    if future_events > 0:
-        raise ValueError(f"Quality gate failed: slv_clickstream_events has {future_events} future event timestamps")
+    results = validate_frames({name: tables[dataset] for dataset, name in SILVER_NAMES.items()})
+    if not all(results.values()):
+        raise ValueError(f"Silver Great Expectations quality gate failed: {results}")
 
     quarantine_path = f"{root_str}/silver_quarantine"
     quarantine_count = (spark.read.format("delta").load(quarantine_path).count()
@@ -326,6 +303,9 @@ def verify_silver_quality(spark: SparkSession, silver_root: str) -> None:
 
 
 def register_unity_catalog(spark: SparkSession, silver_root: str, catalog: str, schema: str) -> None:
+    for value in (catalog, schema):
+        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", value):
+            raise ValueError(f"Unsafe Unity Catalog identifier: {value!r}")
     root_str = str(silver_root).rstrip("/")
     spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{catalog}`.`{schema}`")
     for name in list(SILVER_NAMES.values()) + ["silver_quarantine"]:
@@ -340,10 +320,11 @@ def main() -> None:
     parser.add_argument("--bronze-root", required=True, help="Bronze root (local directory path or s3:// URI)")
     parser.add_argument("--silver-root", required=True, help="Silver Delta root (local directory path or s3:// URI)")
     parser.add_argument("--dataset", action="append", choices=SILVER_NAMES, help="Process one dataset; repeat or omit for all")
-    parser.add_argument("--skip-quality-check", action="store_true", help="Skip post-transform Quality Gate checks")
     parser.add_argument("--catalog", help="Databricks Unity Catalog to register tables into")
     parser.add_argument("--schema", default="silver", help="Databricks schema for Silver tables")
     args = parser.parse_args()
+    if args.dataset and args.catalog:
+        parser.error("--dataset cannot be combined with --catalog; register only after the full quality gate")
 
     spark = get_spark()
     is_standalone_local = not is_s3_uri(args.silver_root) and "DATABRICKS_RUNTIME_VERSION" not in os.environ
@@ -353,7 +334,7 @@ def main() -> None:
             valid, quarantined = run_dataset(spark, args.bronze_root, args.silver_root, dataset)
             print(f"{dataset}: {valid} latest valid rows, {quarantined} quarantined")
 
-        if not args.skip_quality_check and not args.dataset:
+        if not args.dataset:
             verify_silver_quality(spark, args.silver_root)
 
         if args.catalog:

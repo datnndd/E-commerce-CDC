@@ -1,6 +1,7 @@
 """Airflow graph proof: Silver quality must gate publication and dbt."""
 
 import importlib.util
+import os
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -31,7 +32,14 @@ class Stage6DagTest(unittest.TestCase):
         self.assertEqual(dag.task_dict["generate_demo_clickstream_to_bronze"].upstream_task_ids, {"extract_postgres_cdc_to_bronze"})
         self.assertEqual(dag.params["base_currency"], "BRL")
         self.assertEqual(dag.params["quote_currencies"], "USD")
-        self.assertIn("databricks_silver_job_id", dag.params)
+        silver_task = dag.task_dict["run_silver_transform_on_databricks"]
+        from airflow.providers.databricks.operators.databricks import DatabricksRunNowOperator
+        self.assertIsInstance(silver_task, DatabricksRunNowOperator)
+        prefix = os.environ.get("PIPELINE_S3_PREFIX", "").strip("/")
+        root = f"s3://{os.environ.get('AIRFLOW_S3_BUCKET', '')}" + (f"/{prefix}" if prefix else "")
+        self.assertEqual(silver_task.python_params[:4], [
+            "--bronze-root", root, "--silver-root", f"{root}/silver/pipeline_live",
+        ])
         rates_task = dag.task_dict["ingest_exchange_rates_to_bronze"]
         self.assertEqual(rates_task.env["EXCHANGE_BASE_CURRENCY"], "{{ params.base_currency }}")
         self.assertEqual(rates_task.env["EXCHANGE_QUOTE_CURRENCIES"], "{{ params.quote_currencies }}")

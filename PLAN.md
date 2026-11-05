@@ -29,6 +29,8 @@
 
 **Trạng thái 02/11/2026:** Giai đoạn 4–5 đã qua `dbt build` 122/122 và đối soát baseline. DAG Airflow local chạy thử thành công toàn tuyến trên database 1C, prefix S3 và schema Databricks riêng: Silver và Gold đều có 99.461 orders; 122/122 model/test qua, quarantine bằng 0, Ops ghi nhận `success`. Bài thử payment âm đã khiến Great Expectations fail 3 lần, webhook local nhận alert và Gold giữ nguyên. Sau khi trả payment về 99,33, Silver local và bước publish + dbt chạy riêng đã phục hồi, `dbt build` lại đạt 122/122 và Gold không có payment âm hay order trùng. Chủ dự án xác nhận đã thấy một lượt DAG thành công và chấp nhận chốt Giai đoạn 6; metadata Airflow local đọc trong lượt kiểm tra này vẫn có một run `running` và một run `queued`, nên lượt thành công mới chưa được đối chiếu bằng run ID. Bài thử hai lượt cùng logical date và lịch chạy không người giám sát vẫn chưa được xác minh. Giai đoạn 7 sẽ dùng Power BI.
 
+**Cập nhật 05/11/2026:** Theo quyết định mới, Airflow chuyển sang gọi Spark Python Job trên Databricks để xử lý Silver trực tiếp trên S3. Bằng chứng 02/11 thuộc đường Silver local cũ. Contract Job và kiểm thử unit/DAG đã được cập nhật trong [plan Databricks Silver](docs/plans/active/databricks-silver-orchestration.md); chưa xác nhận một lượt Spark/Delta/GX cloud hay DAG mới end-to-end.
+
 ---
 
 ## Giai đoạn 0 — Chuẩn bị & Setup (Ngày 1)
@@ -274,10 +276,10 @@ Local verifier đã chạy 14 singular SQL tests cho business marts, phát hiệ
   ingest_exchange_rates_to_bronze ────────────────────────────────────────┼──► run_silver_transform_on_databricks ──► build_gold_and_marts_dbt ──► record_pipeline_success
   ingest_campaign_fixture_to_bronze ──────────────────────────────────────┘
   ```
-- [x] Airflow local chạy trong container Docker gọn nhẹ (đã gỡ OpenJDK/Spark nội bộ, dùng `DatabricksRunNowOperator`), điều phối Python/uv, PostgreSQL, S3, Databricks connection và dbt Databricks. DAG đặt `retries = 2`, `retry_delay = 5m`, callback webhook khi task fail; cấu hình qua `AIRFLOW_CONN_DATABRICKS_DEFAULT` và `DATABRICKS_SILVER_JOB_ID`.
-- [x] Chạy thử 1C với prefix S3 và schema Databricks riêng (`PIPELINE_S3_PREFIX`, `DBT_SILVER_SCHEMA`, `DBT_TARGET_SCHEMA`), không trộn dữ liệu mô phỏng với snapshot RDS chính.
-- [x] Quality Gate tích hợp trực tiếp vào cuối job `silver_transform.py` chạy trên Databricks (hoặc local fallback): kiểm tra khóa chính duy nhất/không null, join hợp lệ giữa orders và items, và 3 quy tắc Great Expectations (`slv_orders.customer_id` không null, `slv_payments.payment_value >= 0`, `slv_clickstream_events.event_timestamp` không nằm trong tương lai). Loại bỏ các script trung gian không cần thiết (`sync_bronze.py`, `publish_silver.py`).
-- [x] Khi Quality Gate fail, job Silver dừng ngay lập tức (fail-fast), không ghi đè Silver và `build_gold_and_marts_dbt` không chạy; Gold giữ 99.461 orders như trước lỗi. Lượt payment âm làm gate fail, webhook local nhận alert. Bản ghi Ops ghi nhận `failed` với nguyên nhân chi tiết.
+- [x] Airflow local dùng `DatabricksRunNowOperator` để đợi Spark Python Job; không chạy JVM/Spark trên worker. Image hiện vẫn cài thư viện PySpark/Delta qua `uv sync`, nên kích thước image chưa được tối ưu. DAG đặt `retries = 2`, `retry_delay = 5m`, callback webhook khi task fail; Compose tạo Databricks connection từ `DBT_DATABRICKS_HOST` và `DATABRICKS_TOKEN`, còn `DATABRICKS_SILVER_JOB_ID` chọn Job cần chạy.
+- [x] Chạy thử 1C với prefix S3 và schema Databricks riêng (`PIPELINE_S3_PREFIX`, `DBT_SILVER_SCHEMA`, `DBT_TARGET_SCHEMA`) bằng **DAG local Silver trước đây**; chưa có bằng chứng cho Job Spark trên Databricks.
+- [x] Code `silver_transform.py` có Quality Gate khóa chính, purchase join và 3 quy tắc Great Expectations (`slv_orders.customer_id` không null, `slv_payments.payment_value >= 0`, `slv_clickstream_events.event_timestamp` không nằm trong tương lai). Đã bỏ `sync_bronze.py` và `publish_silver.py`; cần chạy Job cloud để xác minh hành vi mới.
+- [x] Bài payment âm trước đây chặn publication và dbt, Gold giữ 99.461 orders, webhook local nhận alert, Ops ghi `failed`. Với Job mới, payment âm bị chặn trước MERGE bảng payments; lỗi muộn hơn vẫn có thể để một số bảng Silver đã tiến lên, nhưng dbt chỉ chạy khi toàn Job thành công.
 - [x] Ghi metadata mỗi lần chạy vào Delta `ops_pipeline_runs`: run ID, thời gian, trạng thái, lỗi, số dòng Bronze/Silver/Gold và từng business mart, số quarantine. Bảng này nuôi trang Data Quality/Ops Giai đoạn 7.
 - [x] Poll không đổi không upload lại: lần poll `orders` lặp trên nguồn 1C quét 0 và xuất bản 0 dòng. Sáu fact incremental bỏ qua cùng khóa/cùng ingestion time; lượt `dbt build` lại trên main có 0 MERGE updates/inserts. Chưa bật lịch unattended trước khi token và đường mạng được cấu hình.
 
@@ -285,6 +287,7 @@ Local verifier đã chạy 14 singular SQL tests cho business marts, phát hiệ
 - [x] Chạy DAG với nguồn 1C cô lập: Silver và Gold cùng 99.461 orders, sáu marts có tổng 150.672 dòng, `dbt build` 122/122. S3 và Databricks của lượt thử dùng prefix/schema riêng; bảng Silver chính vẫn trỏ về vị trí cũ.
 - [x] Tạo một `order_payments.payment_value < 0` trong nguồn thử → checkpoint fail, DAG dừng đúng chỗ, có alert, Gold không đổi.
 - [ ] Chạy lại cùng logical date hai lần → không trùng khóa nguồn, Silver, Gold hay marts; `ops_pipeline_runs` truy vết được cả kết quả chạy lại. Chủ dự án chấp nhận chốt Giai đoạn 6 trước khi xác minh tiêu chí này.
+- [ ] Chạy độc lập Databricks Spark Python Job rồi Airflow DAG trên prefix/schema 1C cô lập; kiểm tra manifest, Great Expectations, bảng Silver/Gold và trạng thái Ops. Cấu hình Job/compute và phiên Databricks CLI hiện chưa được xác minh.
 
 **Bằng chứng phục hồi từng bước:** sau khi sửa payment 1C về 99,33, Silver local có 103.906 payment, không có khóa trùng hay giá trị âm. Publish Silver lên schema thử thành công, `dbt build` đạt 122/122; Gold có 99.461 orders và 103.906 payments, payment thử là 99,33 và không còn payment âm. Hai lượt Airflow bị gián đoạn có Ops `failed`, không ghi nhầm `success`. Tiêu chí hai lượt Airflow thành công cùng logical date còn mở vì `dags test` đồng thời đã gây xung đột SQLite và Docker Desktop dừng trong lượt chạy tuần tự sau đó. Việc chốt Giai đoạn 6 là nghiệm thu của chủ dự án, không phải bằng chứng bổ sung cho tiêu chí này.
 
