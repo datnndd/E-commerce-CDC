@@ -135,6 +135,15 @@ def committed_frames(spark: SparkSession, root: str, dataset: str) -> DataFrame:
     return result
 
 
+def quarantine_rows(dataset: str, frame: DataFrame) -> DataFrame:
+    content_columns = sorted(set(frame.columns) - {"bronze_run_id", "ingested_at", "quarantine_reason", "row_hash"})
+    return (frame.withColumn("dataset", F.lit(dataset))
+            .withColumn("record_json", F.to_json(F.struct(*[F.col(name) for name in content_columns])))
+            .withColumn("record_id", F.sha2(F.concat_ws("|", "dataset", "bronze_run_id", "record_json"), 256))
+            .select("record_id", "dataset", "quarantine_reason", "record_json", "bronze_run_id", "ingested_at")
+            .dropDuplicates(["record_id"]))
+
+
 def normalize(dataset: str, frame: DataFrame) -> tuple[DataFrame, DataFrame]:
     if dataset == "clickstream":
         frame = frame.withColumn("event_timestamp", F.try_to_timestamp("timestamp")).drop("timestamp")
@@ -190,15 +199,33 @@ def normalize(dataset: str, frame: DataFrame) -> tuple[DataFrame, DataFrame]:
     frame = frame.withColumn("quarantine_reason", reason.otherwise(F.lit(None)))
     content_columns = sorted(set(frame.columns) - {"bronze_run_id", "ingested_at", "quarantine_reason", "row_hash"})
     frame = frame.withColumn("row_hash", F.sha2(F.to_json(F.struct(*[F.col(name) for name in content_columns])), 256))
-    bad = frame.filter(F.col("quarantine_reason").isNotNull())
-    bad = (bad.withColumn("dataset", F.lit(dataset))
-           .withColumn("record_json", F.to_json(F.struct(*[F.col(name) for name in content_columns])))
-           .withColumn("record_id", F.sha2(F.concat_ws("|", "dataset", "bronze_run_id", "record_json"), 256))
-           .select("record_id", "dataset", "quarantine_reason", "record_json", "bronze_run_id", "ingested_at")
-           .dropDuplicates(["record_id"]))
+    bad = quarantine_rows(dataset, frame.filter(F.col("quarantine_reason").isNotNull()))
     good = frame.filter(F.col("quarantine_reason").isNull()).drop("quarantine_reason")
     window = Window.partitionBy(*KEYS[dataset]).orderBy(F.col("updated_at").desc(), F.col("ingested_at").desc(), F.col("row_hash").desc())
     good = good.withColumn("_rank", F.row_number().over(window)).filter("_rank = 1").drop("_rank")
+    return good, bad
+
+
+def quarantine_orphan_clickstream(spark: SparkSession, silver_root: str, frame: DataFrame) -> tuple[DataFrame, DataFrame]:
+    root = silver_root.rstrip("/")
+    customers = (spark.read.format("delta").load(f"{root}/slv_customers")
+                 .select("customer_id").distinct().withColumn("_customer_exists", F.lit(True)))
+    orders = (spark.read.format("delta").load(f"{root}/slv_orders")
+              .select("order_id", "customer_id").distinct().withColumn("_order_exists", F.lit(True)))
+    items = (spark.read.format("delta").load(f"{root}/slv_order_items")
+             .select("order_id", "product_id").distinct().withColumn("_item_exists", F.lit(True)))
+    checked = (frame.join(customers, ["customer_id"], "left")
+               .join(orders, ["order_id", "customer_id"], "left")
+               .join(items, ["order_id", "product_id"], "left"))
+    reason = (F.when(F.col("_customer_exists").isNull(), "customer not found in Silver")
+              .when((F.col("event_type") == "purchase") & F.col("_order_exists").isNull(),
+                    "purchase order/customer not found in Silver")
+              .when((F.col("event_type") == "purchase") & F.col("_item_exists").isNull(),
+                    "purchase order/item product not found in Silver"))
+    checked = (checked.withColumn("quarantine_reason", reason)
+               .drop("_customer_exists", "_order_exists", "_item_exists"))
+    good = checked.filter(F.col("quarantine_reason").isNull()).drop("quarantine_reason")
+    bad = quarantine_rows("clickstream", checked.filter(F.col("quarantine_reason").isNotNull()))
     return good, bad
 
 
@@ -227,6 +254,9 @@ def merge_delta(spark: SparkSession, frame: DataFrame, path: str, keys: list[str
 def run_dataset(spark: SparkSession, bronze_root: str, silver_root: str, dataset: str) -> tuple[int, int]:
     root_str = str(silver_root).rstrip("/")
     good, bad = normalize(dataset, committed_frames(spark, str(bronze_root), dataset))
+    if dataset == "clickstream":
+        good, orphaned = quarantine_orphan_clickstream(spark, root_str, good)
+        bad = bad.unionByName(orphaned).dropDuplicates(["record_id"])
     if dataset == "order_payments" and good.filter(F.col("payment_value") < 0).limit(1).count():
         raise ValueError("Quality gate failed: slv_payments has negative payment values")
     if dataset == "clickstream" and good.filter(F.col("event_timestamp") > F.current_timestamp()).limit(1).count():
