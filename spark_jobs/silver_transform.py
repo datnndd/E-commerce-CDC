@@ -207,7 +207,7 @@ def merge_delta(spark: SparkSession, frame: DataFrame, path: str, keys: list[str
     if not is_s3_uri(path_str):
         Path(path_str).parent.mkdir(parents=True, exist_ok=True)
     if not DeltaTable.isDeltaTable(spark, path_str):
-        frame.write.format("delta").mode("errorifexists").save(path_str)
+        frame.write.format("delta").mode("append").save(path_str)
         return
     if not frame.take(1):
         return

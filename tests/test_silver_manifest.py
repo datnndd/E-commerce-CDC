@@ -8,10 +8,19 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from ingestion.cdc_extract import TABLES
-from spark_jobs.silver_transform import KEYS, load_manifests_from_s3, verify_manifest_file
+from spark_jobs.silver_transform import KEYS, load_manifests_from_s3, merge_delta, verify_manifest_file
 
 
 class SilverManifestTest(unittest.TestCase):
+    def test_initial_delta_write_uses_connect_supported_mode(self):
+        spark, frame = MagicMock(), MagicMock()
+        with patch("spark_jobs.silver_transform.DeltaTable.isDeltaTable", return_value=False):
+            merge_delta(spark, frame, "s3://project/silver/slv_customers", ["customer_id"])
+        writer = frame.write.format.return_value
+        frame.write.format.assert_called_once_with("delta")
+        writer.mode.assert_called_once_with("append")
+        writer.mode.return_value.save.assert_called_once_with("s3://project/silver/slv_customers")
+
     def test_spark_python_entrypoint_without_file_global(self):
         script = Path(__file__).resolve().parents[1] / "spark_jobs" / "silver_transform.py"
         namespace = {"__name__": "databricks_spark_python_task"}
