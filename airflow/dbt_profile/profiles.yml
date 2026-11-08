@@ -10,7 +10,7 @@ ecommerce_aws:
       location: "{{ env_var('DBT_S3_LOCATION') }}"
       datalake_formats: "delta"
       conf: "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog"
-      glue_version: "5.0"
+      glue_version: "6.0"
       workers: 2
       worker_type: G.1X
       idle_timeout: 10
@@ -23,7 +23,7 @@ ecommerce_aws:
       location: "{{ env_var('DBT_S3_LOCATION') }}"
       datalake_formats: "delta"
       conf: "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog"
-      glue_version: "5.0"
+      glue_version: "6.0"
       workers: 2
       worker_type: G.1X
       idle_timeout: 10

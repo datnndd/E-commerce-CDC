@@ -7,6 +7,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import yaml
+
 from spark_jobs.silver_schema import SILVER_NAMES
 from spark_jobs.silver_transform import parse_glue_args, register_glue_catalog, write_silver_metrics
 from spark_jobs.ops_key import silver_metrics_key
@@ -21,6 +23,52 @@ def glue_resolver(argv, names):
 
 
 class GlueContractTest(unittest.TestCase):
+    def test_glue_6_delta_runtime_contract(self):
+        class CloudFormationLoader(yaml.SafeLoader):
+            pass
+
+        CloudFormationLoader.add_constructor(
+            "!Ref", lambda loader, node: loader.construct_scalar(node)
+        )
+        root = Path(__file__).resolve().parent.parent
+        template = yaml.load(
+            (root / "infra" / "glue_silver_job.yaml").read_text(encoding="utf-8"),
+            Loader=CloudFormationLoader,
+        )
+        job = template["Resources"]["SilverJob"]["Properties"]
+        args = job["DefaultArguments"]
+        self.assertEqual(job["GlueVersion"], "6.0")
+        self.assertEqual(job["Command"]["Name"], "glueetl")
+        self.assertEqual(job["Command"]["PythonVersion"], "3")
+        self.assertEqual(args["--datalake-formats"], "delta")
+        self.assertIn("--enable-glue-datacatalog", args)
+        self.assertIn("--additional-python-modules", args)
+        self.assertIn("--extra-py-files", args)
+        self.assertNotIn("--extra-jars", args)
+
+        required_conf = (
+            "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension",
+            "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog",
+        )
+        for setting in required_conf:
+            self.assertIn(setting, args["--conf"])
+        self.assertNotIn("spark.delta.logStore.class", args["--conf"])
+
+        for path in (
+            root / "airflow" / "dbt_profile" / "profiles.yml",
+            root / "dbt_project" / "profiles.yml.example",
+        ):
+            outputs = yaml.safe_load(path.read_text(encoding="utf-8"))["ecommerce_aws"]["outputs"]
+            for name, profile in outputs.items():
+                with self.subTest(path=path.name, output=name):
+                    self.assertEqual(profile["type"], "glue")
+                    self.assertEqual(profile["glue_version"], "6.0")
+                    self.assertEqual(profile["datalake_formats"], "delta")
+                    for setting in required_conf:
+                        self.assertIn(setting, profile["conf"])
+                    self.assertNotIn("spark.delta.logStore.class", profile["conf"])
+                    self.assertNotIn("extra_jars", profile)
+
     def test_canonical_underscore_arguments_resolve(self):
         argv = ["job.py", "--JOB_NAME", "silver", "--bronze_root", "s3://bucket",
                 "--silver_root", "s3://bucket/silver/glue_v1", "--glue_database", "silver_aws",

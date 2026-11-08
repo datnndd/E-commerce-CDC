@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: AWS Glue 5.0 Silver Delta job for the E-commerce CDC pipeline
+Description: AWS Glue 6.0 Silver Delta job for the E-commerce CDC pipeline
 Parameters:
   JobName:
     Type: String
@@ -17,7 +17,7 @@ Resources:
     Properties:
       Name: !Ref JobName
       Role: !Ref RoleArn
-      GlueVersion: '5.0'
+      GlueVersion: '6.0'
       Command:
         Name: glueetl
         PythonVersion: '3'
@@ -26,7 +26,7 @@ Resources:
         '--job-language': python
         '--datalake-formats': delta
         '--enable-glue-datacatalog': ''
-        '--conf': 'spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog --conf spark.delta.logStore.class=org.apache.spark.sql.delta.storage.S3SingleDriverLogStore'
+        '--conf': 'spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog'
         '--additional-python-modules': great-expectations==1.24.1
         '--extra-py-files': !Ref LibraryLocation
         '--TempDir': !Ref TempDir

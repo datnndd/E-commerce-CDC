@@ -8,7 +8,7 @@ dependencies = [
     "boto3>=1.40,<2",
     "botocore[crt]>=1.43,<2",
     "dbt-glue>=1.8,<1.11",
-    "delta-spark>=4.3,<4.4",
+    "delta-spark==4.2.0",
     "faker>=37,<39",
     "great-expectations[spark]>=1.19,<2",
     "psycopg[binary]>=3.2,<4",

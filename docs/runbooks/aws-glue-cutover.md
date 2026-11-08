@@ -23,8 +23,12 @@ both reconcile. Record each real run ID and the observed counts in the active
   Upload its `silver_transform.py` and `spark_jobs.zip` to versioned project
   S3 keys. Deploy `infra/glue_silver_job.yaml` with the real job name, role ARN,
   both uploaded locations, and a dedicated S3 TempDir. Inspect the deployed
-  Glue version, `--datalake-formats`, Delta `--conf`, GX module, and library
-  location before starting a DAG run.
+  Glue version (`6.0`), `--datalake-formats=delta`, Delta `--conf`, GX module,
+  and library location before starting a DAG run. `PythonVersion: '3'` is the
+  Glue API selector; Glue 6.0 supplies Python 3.13. Do not install a separate
+  `delta-spark` package or JAR into the Glue job or dbt session. The Delta
+  `--conf` contains the extension and catalog settings; the global LogStore
+  override is deprecated. Keep one active writer per Delta table.
 - Confirm Airflow has parsed the updated DAG and the dbt profile has the real
   role, schema, S3 location, and Delta Spark configuration. `runtime_check`
   rejects missing values and a reused Silver path, but cannot prove IAM grants.
@@ -39,7 +43,9 @@ both reconcile. Record each real run ID and the observed counts in the active
    their 13 Glue Catalog registrations and S3 locations, dbt build results,
    13 Athena Delta SELECT counts, and the Ops row through Athena. A successful
    Ops row must have measured Silver/Gold/mart/quarantine counts. Check the
-   result against source and mart grain, not only task status.
+   result against source and mart grain, not only task status. Check the Delta
+   reader protocol and reader features for Athena compatibility; Glue 6.0's
+   bundled Delta 4.2.0 alone does not prove Athena can read each table.
 3. Re-run with the same logical date and inspect duplicate keys at Silver and
    Gold grains. Run the approved negative payment fixture in the isolated
    source; Great Expectations must fail before Gold, and the Ops record must

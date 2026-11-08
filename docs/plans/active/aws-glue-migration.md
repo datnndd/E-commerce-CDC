@@ -10,7 +10,7 @@ supersedes its execution path without deleting its data or resources.
 
 ## Outcome
 
-Airflow ingests Bronze to S3, waits for an AWS Glue 5.0 Silver Delta job and its
+Airflow ingests Bronze to S3, waits for an AWS Glue 6.0 Silver Delta job and its
 quality gate, builds Gold and marts through dbt-glue, publishes six marts and
 run metadata to Athena engine v3, and refreshes the seven-table Power BI Import
 model without a Databricks dependency.
@@ -55,6 +55,9 @@ unrelated OLTP/Bronze transformations.
   merges after fixing the cause, and inspect Delta history before rollback.
 - If AWS permissions, budget, ODBC, or gateway access is unavailable, stop at
   the last observed proof and report the exact gap.
+- Glue 6.0 changes Spark SQL defaults and Delta runtime. Recheck casts,
+  date parsing, Delta table protocol, and Athena SELECT on a real isolated run
+  before trusting the local Spark and dbt parse results.
 
 ## Progress
 
@@ -62,6 +65,8 @@ unrelated OLTP/Bronze transformations.
 - [x] Implement Glue/Delta/catalog contract and focused offline proof.
 - [x] Implement dbt, Athena, Ops, and Power BI code and focused offline proof.
 - [x] Update architecture, runbook, and repository-wide offline validation.
+- [x] Align Glue job and dbt sessions to Glue 6.0 and its Delta configuration;
+  verify the configuration contract offline.
 - [ ] Validate isolated live run, negative fixture, and same-date rerun.
 - [ ] Reconcile and switch main path and Power BI, then verify scheduling.
 
@@ -72,11 +77,17 @@ unrelated OLTP/Bronze transformations.
 - 2026-11-07: Power BI remains Import and reads six marts plus Ops via Athena.
 - 2026-11-07: Use new AWS S3 and Catalog namespaces for the main path; keep the
   Databricks-backed data untouched.
+- 2026-11-08: Use AWS Glue 6.0 for Silver and dbt interactive sessions. Keep
+  native Delta integration; PythonVersion `3` is the Glue API selector for
+  Spark jobs, while GlueVersion selects Python 3.13. Pin local Delta 4.2.0 to
+  match Glue's bundled release; local PySpark remains 4.1.1.
 
 ## Validation
 
 - Focused proof: Glue argument, Catalog location, per-run Ops, Athena publish,
-  DAG preflight, and dbt profile tests pass. Power BI Modeling MCP serialized
+  DAG preflight, Glue 6.0/Delta runtime contract, and dbt profile tests pass.
+  An in-memory negative check rejected both Glue 5.0 and the deprecated global
+  LogStore setting. Power BI Modeling MCP serialized
   and reloaded seven Import tables and 26 measures.
 - Integration or end-to-end proof: `dbt compile` compiled 122/122 resources
   with offline placeholders, but emitted AWS credential-refresh warnings. No
@@ -84,7 +95,8 @@ unrelated OLTP/Bronze transformations.
   reports an expired `aws login` session, and this Windows machine has no
   Athena ODBC DSN.
 - Repository-required checks: `uv run python -m unittest discover -s tests
-  -p 'test_*.py' -q` passed 84 tests with 16 skipped; Python compileall and
+  -p 'test_*.py' -q` passed 85 tests with 16 skipped after the Glue 6.0
+  configuration update; Python compileall and
   `git diff --check` passed. Line-ending normalization warnings were emitted
   by Git on Windows; no whitespace errors remain.
 

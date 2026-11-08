@@ -1,0 +1,407 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 820" width="100%" height="100%" style="background:#0b1120; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <defs>
+    <!-- Gradients -->
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b1120"/>
+      <stop offset="50%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#090d16"/>
+    </linearGradient>
+
+    <linearGradient id="sourceGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+
+    <linearGradient id="bronzeGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#d97706"/>
+      <stop offset="100%" stop-color="#92400e"/>
+    </linearGradient>
+
+    <linearGradient id="silverGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0284c7"/>
+      <stop offset="100%" stop-color="#0369a1"/>
+    </linearGradient>
+
+    <linearGradient id="goldGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#eab308"/>
+      <stop offset="100%" stop-color="#ca8a04"/>
+    </linearGradient>
+
+    <linearGradient id="servingGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#9333ea"/>
+      <stop offset="100%" stop-color="#7e22ce"/>
+    </linearGradient>
+
+    <linearGradient id="airflowGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#059669"/>
+      <stop offset="50%" stop-color="#10b981"/>
+      <stop offset="100%" stop-color="#047857"/>
+    </linearGradient>
+
+    <!-- Filters -->
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="115%" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>
+    <filter id="glowCyan" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="#38bdf8" flood-opacity="0.6"/>
+    </filter>
+    
+    <!-- Marker Arrows -->
+    <marker id="arrowCyan" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#38bdf8"/>
+    </marker>
+    <marker id="arrowAmber" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#f59e0b"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#10b981"/>
+    </marker>
+    <marker id="arrowPurple" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#c084fc"/>
+    </marker>
+  </defs>
+
+  <!-- Background Base -->
+  <rect width="1280" height="820" fill="url(#bgGrad)"/>
+  
+  <!-- Subtle Grid Pattern -->
+  <g opacity="0.05">
+    <path d="M0 50 H1280 M0 100 H1280 M0 150 H1280 M0 200 H1280 M0 250 H1280 M0 300 H1280 M0 350 H1280 M0 400 H1280 M0 450 H1280 M0 500 H1280 M0 550 H1280 M0 600 H1280 M0 650 H1280 M0 700 H1280 M0 750 H1280" stroke="#ffffff" stroke-width="1"/>
+    <path d="M50 0 V820 M100 0 V820 M150 0 V820 M200 0 V820 M250 0 V820 M300 0 V820 M350 0 V820 M400 0 V820 M450 0 V820 M500 0 V820 M550 0 V820 M600 0 V820 M650 0 V820 M700 0 V820 M750 0 V820 M800 0 V820 M850 0 V820 M900 0 V820 M950 0 V820 M1000 0 V820 M1050 0 V820 M1100 0 V820 M1150 0 V820 M1200 0 V820 M1250 0 V820" stroke="#ffffff" stroke-width="1"/>
+  </g>
+
+  <!-- ==================== HEADER ==================== -->
+  <g id="header" transform="translate(40, 28)">
+    <text x="0" y="24" fill="#f8fafc" font-size="22" font-weight="700" letter-spacing="-0.5">E-COMMERCE CDC LAKEHOUSE ARCHITECTURE</text>
+    <text x="0" y="46" fill="#94a3b8" font-size="13">End-to-End Medallion Lakehouse: PostgreSQL OLTP → Amazon S3 → AWS Glue 6.0 Delta Lake → dbt → Athena → Power BI</text>
+
+    <!-- Header Badges -->
+    <g transform="translate(780, 5)">
+      <rect x="0" y="0" width="130" height="26" rx="13" fill="#1e293b" stroke="#38bdf8" stroke-width="1"/>
+      <text x="65" y="17" fill="#38bdf8" font-size="11" font-weight="600" text-anchor="middle">⚡ CDC Watermark</text>
+      
+      <rect x="140" y="0" width="145" height="26" rx="13" fill="#1e293b" stroke="#10b981" stroke-width="1"/>
+      <text x="212" y="17" fill="#10b981" font-size="11" font-weight="600" text-anchor="middle">✓ 122/122 dbt tests</text>
+
+      <rect x="295" y="0" width="145" height="26" rx="13" fill="#1e293b" stroke="#f59e0b" stroke-width="1"/>
+      <text x="367" y="17" fill="#f59e0b" font-size="11" font-weight="600" text-anchor="middle">★ Medallion Model</text>
+    </g>
+  </g>
+
+  <!-- ==================== COLUMN 1: DATA SOURCES ==================== -->
+  <g id="col-sources" transform="translate(40, 95)">
+    <!-- Column Container -->
+    <rect width="210" height="570" rx="14" fill="#111c30" stroke="#1e293b" stroke-width="1.5" filter="url(#shadow)"/>
+    
+    <!-- Column Header -->
+    <path d="M 0 14 C 0 6 6 0 14 0 L 196 0 C 204 0 210 6 210 14 L 210 42 L 0 42 Z" fill="#1e293b"/>
+    <circle cx="24" cy="21" r="5" fill="#38bdf8"/>
+    <text x="38" y="26" fill="#f1f5f9" font-size="13" font-weight="700">1. DATA SOURCES</text>
+
+    <!-- Source Box 1: PostgreSQL OLTP -->
+    <g transform="translate(14, 56)">
+      <rect width="182" height="150" rx="10" fill="#162238" stroke="#334155" stroke-width="1"/>
+      <rect x="10" y="10" width="30" height="24" rx="4" fill="#1e3a5f"/>
+      <text x="25" y="26" fill="#38bdf8" font-size="12" font-weight="700" text-anchor="middle">PG</text>
+      <text x="48" y="25" fill="#f8fafc" font-size="12" font-weight="700">PostgreSQL OLTP</text>
+      <text x="12" y="50" fill="#94a3b8" font-size="10.5">● Brazilian Olist Dataset</text>
+      <text x="12" y="68" fill="#64748b" font-size="9.5">  (9 tables, 100k+ orders)</text>
+      <text x="12" y="88" fill="#94a3b8" font-size="10.5">● Daily Order Simulator</text>
+      <text x="12" y="106" fill="#64748b" font-size="9.5">  (New orders, price changes)</text>
+      <text x="12" y="126" fill="#94a3b8" font-size="10.5">● Soft-deletes &amp; updates</text>
+      <text x="12" y="142" fill="#38bdf8" font-size="9.5" font-weight="600">cdc_watermark table</text>
+    </g>
+
+    <!-- Source Box 2: External REST APIs -->
+    <g transform="translate(14, 222)">
+      <rect width="182" height="140" rx="10" fill="#162238" stroke="#334155" stroke-width="1"/>
+      <rect x="10" y="10" width="30" height="24" rx="4" fill="#1e3a5f"/>
+      <text x="25" y="26" fill="#38bdf8" font-size="12" font-weight="700" text-anchor="middle">API</text>
+      <text x="48" y="25" fill="#f8fafc" font-size="12" font-weight="700">External REST APIs</text>
+      <text x="12" y="52" fill="#94a3b8" font-size="10.5">● Frankfurter API</text>
+      <text x="12" y="70" fill="#64748b" font-size="9.5">  Daily FX Rates (BRL / USD)</text>
+      <text x="12" y="92" fill="#94a3b8" font-size="10.5">● Marketing Campaigns</text>
+      <text x="12" y="110" fill="#64748b" font-size="9.5">  Channel discounts &amp; UTM</text>
+      <text x="12" y="130" fill="#10b981" font-size="9.5" font-weight="600">3x Retry with Exponential Backoff</text>
+    </g>
+
+    <!-- Source Box 3: Clickstream Event Gen -->
+    <g transform="translate(14, 380)">
+      <rect width="182" height="120" rx="10" fill="#162238" stroke="#334155" stroke-width="1"/>
+      <rect x="10" y="10" width="30" height="24" rx="4" fill="#1e3a5f"/>
+      <text x="25" y="26" fill="#38bdf8" font-size="11" font-weight="700" text-anchor="middle">LOG</text>
+      <text x="48" y="25" fill="#f8fafc" font-size="12" font-weight="700">Clickstream Stream</text>
+      <text x="12" y="52" fill="#94a3b8" font-size="10.5">● User Journey Events</text>
+      <text x="12" y="70" fill="#64748b" font-size="9.5">  (view, cart, checkout, buy)</text>
+      <text x="12" y="90" fill="#94a3b8" font-size="10.5">● Session Tracking</text>
+      <text x="12" y="108" fill="#cbd5e1" font-size="9.5">JSONL → events.json.gz</text>
+    </g>
+
+    <!-- Tech Footer Inside Source -->
+    <text x="105" y="540" fill="#64748b" font-size="10" text-anchor="middle">PostgreSQL 18 | Python 3.13 | Docker</text>
+  </g>
+
+  <!-- ==================== ARROW: SOURCES -> BRONZE ==================== -->
+  <path d="M 250 260 L 285 260" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrowCyan)"/>
+  <path d="M 250 410 L 285 410" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrowCyan)"/>
+
+  <!-- ==================== COLUMN 2: INGESTION & BRONZE ==================== -->
+  <g id="col-bronze" transform="translate(290, 95)">
+    <rect width="210" height="570" rx="14" fill="#111c30" stroke="#b45309" stroke-width="1.5" filter="url(#shadow)"/>
+    
+    <!-- Column Header -->
+    <path d="M 0 14 C 0 6 6 0 14 0 L 196 0 C 204 0 210 6 210 14 L 210 42 L 0 42 Z" fill="url(#bronzeGrad)"/>
+    <circle cx="24" cy="21" r="5" fill="#fef3c7"/>
+    <text x="38" y="26" fill="#ffffff" font-size="13" font-weight="700">2. BRONZE (RAW S3)</text>
+
+    <!-- Sub-Box 1: CDC Ingestion Engine -->
+    <g transform="translate(14, 56)">
+      <rect width="182" height="175" rx="10" fill="#162238" stroke="#451a03" stroke-width="1"/>
+      <text x="12" y="24" fill="#fbbf24" font-size="12" font-weight="700">CDC Ingestion Engine</text>
+      <text x="12" y="44" fill="#94a3b8" font-size="10.5">● Python Incremental Polling</text>
+      <text x="12" y="64" fill="#94a3b8" font-size="10.5">● 15-min Overlap Window</text>
+      <text x="12" y="82" fill="#64748b" font-size="9.5">  (Captures in-flight updates)</text>
+      <text x="12" y="102" fill="#94a3b8" font-size="10.5">● Boundary Fingerprint</text>
+      <text x="12" y="120" fill="#64748b" font-size="9.5">  (Hash match = 0 S3 egress)</text>
+      <text x="12" y="142" fill="#10b981" font-size="10">● Manifest Protocol</text>
+      <text x="12" y="158" fill="#64748b" font-size="9.5">  (Row count + SHA-256)</text>
+    </g>
+
+    <!-- Sub-Box 2: Amazon S3 Storage Layout -->
+    <g transform="translate(14, 245)">
+      <rect width="182" height="230" rx="10" fill="#162238" stroke="#451a03" stroke-width="1"/>
+      <text x="12" y="24" fill="#fbbf24" font-size="12" font-weight="700">Amazon S3 Bronze Prefix</text>
+      
+      <rect x="10" y="38" width="162" height="42" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+      <text x="16" y="54" fill="#f8fafc" font-size="10" font-weight="600">bronze/postgres_oltp/</text>
+      <text x="16" y="70" fill="#94a3b8" font-size="9">part-*.parquet + _manifest.json</text>
+
+      <rect x="10" y="88" width="162" height="42" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+      <text x="16" y="104" fill="#f8fafc" font-size="10" font-weight="600">bronze/clickstream/</text>
+      <text x="16" y="120" fill="#94a3b8" font-size="9">dt=*/events.json.gz + _manifest</text>
+
+      <rect x="10" y="138" width="162" height="42" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+      <text x="16" y="154" fill="#f8fafc" font-size="10" font-weight="600">bronze/api/</text>
+      <text x="16" y="170" fill="#94a3b8" font-size="9">exchange_rate/ &amp; campaign/</text>
+
+      <text x="12" y="202" fill="#fbbf24" font-size="10" font-weight="600">Immutable Raw Storage</text>
+      <text x="12" y="218" fill="#64748b" font-size="9.5">SSE-S3 | Block Public Access</text>
+    </g>
+
+    <!-- Tech Footer Inside Bronze -->
+    <text x="105" y="540" fill="#64748b" font-size="10" text-anchor="middle">boto3 | PyArrow | Parquet</text>
+  </g>
+
+  <!-- ==================== ARROW: BRONZE -> SILVER ==================== -->
+  <path d="M 500 280 L 535 280" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrowAmber)"/>
+
+  <!-- ==================== COLUMN 3: PROCESSING & SILVER ==================== -->
+  <g id="col-silver" transform="translate(540, 95)">
+    <rect width="220" height="570" rx="14" fill="#111c30" stroke="#0284c7" stroke-width="1.5" filter="url(#shadow)"/>
+    
+    <!-- Column Header -->
+    <path d="M 0 14 C 0 6 6 0 14 0 L 206 0 C 214 0 220 6 220 14 L 220 42 L 0 42 Z" fill="url(#silverGrad)"/>
+    <circle cx="24" cy="21" r="5" fill="#e0f2fe"/>
+    <text x="38" y="26" fill="#ffffff" font-size="13" font-weight="700">3. SILVER (DELTA LAKE)</text>
+
+    <!-- Sub-Box 1: AWS Glue & Spark Engine -->
+    <g transform="translate(14, 56)">
+      <rect width="192" height="150" rx="10" fill="#162238" stroke="#0369a1" stroke-width="1"/>
+      <text x="12" y="24" fill="#38bdf8" font-size="12" font-weight="700">AWS Glue 6.0 / PySpark</text>
+      <text x="12" y="44" fill="#94a3b8" font-size="10.5">● Spark 4.1 + Delta Lake 4.2</text>
+      <text x="12" y="64" fill="#94a3b8" font-size="10.5">● Manifest Verification</text>
+      <text x="12" y="82" fill="#64748b" font-size="9.5">  (Checks size &amp; SHA-256)</text>
+      <text x="12" y="102" fill="#94a3b8" font-size="10.5">● Idempotent MERGE INTO</text>
+      <text x="12" y="120" fill="#64748b" font-size="9.5">  (De-duplicates on updated_at)</text>
+      <text x="12" y="138" fill="#38bdf8" font-size="10" font-weight="600">Glue Data Catalog Auto-Sync</text>
+    </g>
+
+    <!-- Sub-Box 2: Data Quality & Quarantine -->
+    <g transform="translate(14, 218)">
+      <rect width="192" height="135" rx="10" fill="#162238" stroke="#0369a1" stroke-width="1"/>
+      <text x="12" y="22" fill="#38bdf8" font-size="12" font-weight="700">Quality Gate &amp; Quarantine</text>
+      <text x="12" y="42" fill="#10b981" font-size="10.5">● Great Expectations Gate</text>
+      <text x="12" y="60" fill="#64748b" font-size="9.5">  Non-null PK, range &amp; FK integrity</text>
+      <text x="12" y="80" fill="#ef4444" font-size="10.5">● silver_quarantine routing</text>
+      <text x="12" y="98" fill="#64748b" font-size="9.5">  Isolates bad/orphan records</text>
+      <text x="12" y="118" fill="#64748b" font-size="9.5">  (Failed FK, negative price)</text>
+    </g>
+
+    <!-- Sub-Box 3: Clean Silver Tables -->
+    <g transform="translate(14, 365)">
+      <rect width="192" height="135" rx="10" fill="#162238" stroke="#0369a1" stroke-width="1"/>
+      <text x="12" y="22" fill="#38bdf8" font-size="12" font-weight="700">12 Clean Delta Tables</text>
+      <text x="12" y="42" fill="#cbd5e1" font-size="10">slv_orders, slv_order_items</text>
+      <text x="12" y="58" fill="#cbd5e1" font-size="10">slv_customers, slv_products</text>
+      <text x="12" y="74" fill="#cbd5e1" font-size="10">slv_payments, slv_reviews</text>
+      <text x="12" y="90" fill="#cbd5e1" font-size="10">slv_sellers, slv_geolocation</text>
+      <text x="12" y="106" fill="#cbd5e1" font-size="10">slv_clickstream, slv_fx_rates</text>
+      <text x="12" y="122" fill="#94a3b8" font-size="9.5">Stored as Delta Parquet on S3</text>
+    </g>
+
+    <!-- Tech Footer Inside Silver -->
+    <text x="110" y="540" fill="#64748b" font-size="10" text-anchor="middle">Glue 6.0 | Delta 4.2 | Great Expectations</text>
+  </g>
+
+  <!-- ==================== ARROW: SILVER -> GOLD ==================== -->
+  <path d="M 760 280 L 795 280" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrowCyan)"/>
+
+  <!-- ==================== COLUMN 4: MODELING & GOLD ==================== -->
+  <g id="col-gold" transform="translate(800, 95)">
+    <rect width="220" height="570" rx="14" fill="#111c30" stroke="#ca8a04" stroke-width="1.5" filter="url(#shadow)"/>
+    
+    <!-- Column Header -->
+    <path d="M 0 14 C 0 6 6 0 14 0 L 206 0 C 214 0 220 6 220 14 L 220 42 L 0 42 Z" fill="url(#goldGrad)"/>
+    <circle cx="24" cy="21" r="5" fill="#fef08a"/>
+    <text x="38" y="26" fill="#ffffff" font-size="13" font-weight="700">4. GOLD (DBT STAR SCHEMA)</text>
+
+    <!-- Sub-Box 1: dbt Transformation Engine -->
+    <g transform="translate(14, 56)">
+      <rect width="192" height="135" rx="10" fill="#162238" stroke="#ca8a04" stroke-width="1"/>
+      <text x="12" y="24" fill="#fde047" font-size="12" font-weight="700">dbt-glue / dbt-core</text>
+      <text x="12" y="44" fill="#94a3b8" font-size="10.5">● 122 Total Nodes</text>
+      <text x="12" y="62" fill="#64748b" font-size="9.5">  (Models, tests, snapshots)</text>
+      <text x="12" y="82" fill="#94a3b8" font-size="10.5">● SCD Type 2 Snapshots</text>
+      <text x="12" y="100" fill="#64748b" font-size="9.5">  Customers &amp; Products track</text>
+      <text x="12" y="118" fill="#10b981" font-size="9.5" font-weight="600">85 Data Tests (0 Failures)</text>
+    </g>
+
+    <!-- Sub-Box 2: Star Schema Dimensions & Facts -->
+    <g transform="translate(14, 202)">
+      <rect width="192" height="150" rx="10" fill="#162238" stroke="#ca8a04" stroke-width="1"/>
+      <text x="12" y="22" fill="#fde047" font-size="12" font-weight="700">Conformed Star Schema</text>
+      <text x="12" y="42" fill="#38bdf8" font-size="10.5" font-weight="600">7 Dimensions:</text>
+      <text x="12" y="58" fill="#94a3b8" font-size="9.5">dim_customer, dim_product,</text>
+      <text x="12" y="72" fill="#94a3b8" font-size="9.5">dim_seller, dim_geography,</text>
+      <text x="12" y="86" fill="#94a3b8" font-size="9.5">dim_date, dim_channel, dim_cat</text>
+      <text x="12" y="106" fill="#f59e0b" font-size="10.5" font-weight="600">7 Fact Tables:</text>
+      <text x="12" y="122" fill="#94a3b8" font-size="9.5">Commerce: orders, items, pay, rev</text>
+      <text x="12" y="136" fill="#94a3b8" font-size="9.5">Behavior: clicks, sessions, rates</text>
+    </g>
+
+    <!-- Sub-Box 3: 6 Analytical Marts -->
+    <g transform="translate(14, 362)">
+      <rect width="192" height="145" rx="10" fill="#162238" stroke="#ca8a04" stroke-width="1"/>
+      <text x="12" y="22" fill="#fde047" font-size="12" font-weight="700">6 Business Data Marts</text>
+      <text x="12" y="42" fill="#cbd5e1" font-size="10">● mart_daily_sales</text>
+      <text x="12" y="58" fill="#cbd5e1" font-size="10">● mart_product_performance</text>
+      <text x="12" y="74" fill="#cbd5e1" font-size="10">● mart_customer_rfm</text>
+      <text x="12" y="90" fill="#cbd5e1" font-size="10">● mart_funnel_daily</text>
+      <text x="12" y="106" fill="#cbd5e1" font-size="10">● mart_payment_mix_daily</text>
+      <text x="12" y="122" fill="#cbd5e1" font-size="10">● mart_order_experience</text>
+      <text x="12" y="138" fill="#10b981" font-size="9">Incremental Delta MERGE</text>
+    </g>
+
+    <!-- Tech Footer Inside Gold -->
+    <text x="110" y="540" fill="#64748b" font-size="10" text-anchor="middle">dbt Core | dbt-glue | Star Schema</text>
+  </g>
+
+  <!-- ==================== ARROW: GOLD -> SERVING/BI ==================== -->
+  <path d="M 1020 280 L 1055 280" stroke="#fde047" stroke-width="2" marker-end="url(#arrowAmber)"/>
+
+  <!-- ==================== COLUMN 5: SERVING & ANALYTICS ==================== -->
+  <g id="col-serving" transform="translate(1060, 95)">
+    <rect width="180" height="570" rx="14" fill="#111c30" stroke="#9333ea" stroke-width="1.5" filter="url(#shadow)"/>
+    
+    <!-- Column Header -->
+    <path d="M 0 14 C 0 6 6 0 14 0 L 166 0 C 174 0 180 6 180 14 L 180 42 L 0 42 Z" fill="url(#servingGrad)"/>
+    <circle cx="20" cy="21" r="5" fill="#f3e8ff"/>
+    <text x="32" y="26" fill="#ffffff" font-size="13" font-weight="700">5. SERVING &amp; BI</text>
+
+    <!-- Sub-Box 1: Amazon Athena v3 -->
+    <g transform="translate(12, 56)">
+      <rect width="156" height="135" rx="10" fill="#162238" stroke="#7e22ce" stroke-width="1"/>
+      <text x="10" y="24" fill="#c084fc" font-size="12" font-weight="700">Amazon Athena</text>
+      <text x="10" y="44" fill="#94a3b8" font-size="10.5">● Engine v3</text>
+      <text x="10" y="62" fill="#94a3b8" font-size="10.5">● Native Delta Reader</text>
+      <text x="10" y="80" fill="#64748b" font-size="9.5">  Direct Delta S3 queries</text>
+      <text x="10" y="100" fill="#94a3b8" font-size="10.5">● Glue Catalog View</text>
+      <text x="10" y="120" fill="#c084fc" font-size="9.5" font-weight="600">ODBC / JDBC Connectivity</text>
+    </g>
+
+    <!-- Sub-Box 2: Power BI Dashboard -->
+    <g transform="translate(12, 205)">
+      <rect width="156" height="295" rx="10" fill="#162238" stroke="#7e22ce" stroke-width="1"/>
+      <text x="10" y="24" fill="#f59e0b" font-size="12" font-weight="700">Power BI (.pbip)</text>
+      <text x="10" y="44" fill="#94a3b8" font-size="10.5">● 5 Dashboard Pages:</text>
+      <text x="10" y="62" fill="#f1f5f9" font-size="9.5">  1. Executive / Sales</text>
+      <text x="10" y="78" fill="#f1f5f9" font-size="9.5">  2. Product Performance</text>
+      <text x="10" y="94" fill="#f1f5f9" font-size="9.5">  3. Customer / RFM</text>
+      <text x="10" y="110" fill="#f1f5f9" font-size="9.5">  4. Journey / Experience</text>
+      <text x="10" y="126" fill="#f1f5f9" font-size="9.5">  5. Data Quality / Ops</text>
+      <text x="10" y="152" fill="#94a3b8" font-size="10.5">● 7 Import Tables</text>
+      <text x="10" y="170" fill="#94a3b8" font-size="10.5">● 26 DAX Measures</text>
+      <text x="10" y="188" fill="#64748b" font-size="9">  (RFM, MoM growth, funnel)</text>
+      <text x="10" y="210" fill="#10b981" font-size="10.5">● Automated Refresh</text>
+      <text x="10" y="228" fill="#64748b" font-size="9.5">  Via On-Premise Gateway</text>
+      
+      <rect x="8" y="245" width="140" height="36" rx="6" fill="#2e1065" stroke="#a855f7" stroke-width="1"/>
+      <text x="78" y="267" fill="#f3e8ff" font-size="10" font-weight="600" text-anchor="middle">Athena ODBC DSN</text>
+    </g>
+
+    <!-- Tech Footer Inside Serving -->
+    <text x="90" y="540" fill="#64748b" font-size="10" text-anchor="middle">Athena v3 | Power BI PBIP</text>
+  </g>
+
+  <!-- ==================== CROSS-CUTTING FOUNDATION: AIRFLOW & OPS ==================== -->
+  <g id="row-orchestration" transform="translate(40, 680)">
+    <!-- Container -->
+    <rect width="1200" height="115" rx="14" fill="#0f172a" stroke="#059669" stroke-width="1.5" filter="url(#shadow)"/>
+    
+    <!-- Left Accent Badge -->
+    <path d="M 0 14 C 0 6 6 0 14 0 L 190 0 L 190 115 L 14 115 C 6 115 0 109 0 101 Z" fill="url(#airflowGrad)"/>
+    <text x="95" y="45" fill="#ffffff" font-size="14" font-weight="700" text-anchor="middle">ORCHESTRATION</text>
+    <text x="95" y="65" fill="#ffffff" font-size="14" font-weight="700" text-anchor="middle">&amp; MONITORING</text>
+    <text x="95" y="90" fill="#d1fae5" font-size="11" text-anchor="middle">Apache Airflow 3</text>
+
+    <!-- DAG Pipeline Flow Nodes -->
+    <g transform="translate(210, 16)">
+      <!-- Step 1: Preflight -->
+      <rect x="0" y="0" width="105" height="52" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+      <text x="52" y="22" fill="#38bdf8" font-size="10" font-weight="700" text-anchor="middle">runtime_check</text>
+      <text x="52" y="38" fill="#94a3b8" font-size="9" text-anchor="middle">Preflight env check</text>
+
+      <path d="M 105 26 L 120 26" stroke="#10b981" stroke-width="2" marker-end="url(#arrowGreen)"/>
+
+      <!-- Step 2: Extractors -->
+      <rect x="122" y="0" width="135" height="52" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+      <text x="189" y="22" fill="#38bdf8" font-size="10" font-weight="700" text-anchor="middle">extract_*_to_bronze</text>
+      <text x="189" y="38" fill="#94a3b8" font-size="9" text-anchor="middle">CDC + Rates + Clicks</text>
+
+      <path d="M 257 26 L 272 26" stroke="#10b981" stroke-width="2" marker-end="url(#arrowGreen)"/>
+
+      <!-- Step 3: Glue Silver Job -->
+      <rect x="274" y="0" width="145" height="52" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+      <text x="346" y="22" fill="#38bdf8" font-size="10" font-weight="700" text-anchor="middle">run_silver_on_glue</text>
+      <text x="346" y="38" fill="#94a3b8" font-size="9" text-anchor="middle">GlueJobOperator (Spark)</text>
+
+      <path d="M 419 26 L 434 26" stroke="#10b981" stroke-width="2" marker-end="url(#arrowGreen)"/>
+
+      <!-- Step 4: dbt Build -->
+      <rect x="436" y="0" width="135" height="52" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+      <text x="503" y="22" fill="#38bdf8" font-size="10" font-weight="700" text-anchor="middle">build_gold_and_marts</text>
+      <text x="503" y="38" fill="#94a3b8" font-size="9" text-anchor="middle">dbt build (122 nodes)</text>
+
+      <path d="M 571 26 L 586 26" stroke="#10b981" stroke-width="2" marker-end="url(#arrowGreen)"/>
+
+      <!-- Step 5: Athena Publish -->
+      <rect x="588" y="0" width="125" height="52" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+      <text x="650" y="22" fill="#38bdf8" font-size="10" font-weight="700" text-anchor="middle">publish_athena</text>
+      <text x="650" y="38" fill="#94a3b8" font-size="9" text-anchor="middle">Register Glue views</text>
+
+      <path d="M 713 26 L 728 26" stroke="#10b981" stroke-width="2" marker-end="url(#arrowGreen)"/>
+
+      <!-- Step 6: Success / Fail -->
+      <rect x="730" y="0" width="120" height="52" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+      <text x="790" y="22" fill="#10b981" font-size="10" font-weight="700" text-anchor="middle">ops_runs finish</text>
+      <text x="790" y="38" fill="#94a3b8" font-size="9" text-anchor="middle">Audit record committed</text>
+
+      <!-- Bottom Line in Orchestration -->
+      <g transform="translate(0, 68)">
+        <text x="0" y="14" fill="#10b981" font-size="11" font-weight="600">● DAG: ecommerce_cdc_daily (@daily schedule)</text>
+        <text x="320" y="14" fill="#cbd5e1" font-size="11">● Alerts: Webhook on_failure_callback</text>
+        <text x="600" y="14" fill="#cbd5e1" font-size="11">● Audit: ops_pipeline_runs (S3 JSON &amp; Glue Catalog)</text>
+      </g>
+    </g>
+  </g>
+</svg>
