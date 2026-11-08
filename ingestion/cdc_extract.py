@@ -14,7 +14,7 @@ from psycopg import IsolationLevel, sql
 from sqlalchemy import BigInteger, Boolean, DateTime, Float, Integer, Numeric, String
 
 from ingestion.s3 import pipeline_s3_prefix, s3_client_and_bucket
-from sources.oltp.load_olist import FILES, connection_settings, database_settings
+from sources.oltp.load_olist import FILES, connection_settings, database_settings, replica_connection_settings
 
 
 TABLES = {model.__tablename__: model for model, _ in FILES}
@@ -151,23 +151,33 @@ def extract_table(settings, s3, bucket, table_name, max_file_rows=MAX_FILE_ROWS)
                     (table_name,),
                 )
                 last_updated_at, last_boundary_hash = cursor.fetchone()
-                cursor.execute(sql.SQL("SELECT max(updated_at) FROM {}").format(sql.Identifier(table_name)))
-                max_updated_at = cursor.fetchone()[0]
-                if last_updated_at and max_updated_at and max_updated_at < last_updated_at:
-                    raise ValueError(f"{table_name}: source updated_at moved behind its watermark")
 
-            lower = last_updated_at - timedelta(minutes=15) if last_updated_at else None
-            current_boundary_hash = overlap_hash(
-                connection, table_name, TABLES[table_name], max_updated_at
-            )
-            unchanged = (last_updated_at is not None and max_updated_at == last_updated_at
-                         and current_boundary_hash == last_boundary_hash)
-            if max_updated_at is not None and not unchanged:
-                chunks, scanned_rows = write_parquet(
-                    connection, TABLES[table_name], table_name, lower, max_updated_at, started_at, max_file_rows,
+            # Offload analytical queries to Read Replica if configured
+            replica_opts = replica_connection_settings(settings)
+            primary_opts = connection_settings(settings)
+            read_conn = connection if replica_opts == primary_opts else psycopg.connect(**replica_opts, options="-c TimeZone=UTC")
+            try:
+                with read_conn.cursor() as read_cursor:
+                    read_cursor.execute(sql.SQL("SELECT max(updated_at) FROM {}").format(sql.Identifier(table_name)))
+                    max_updated_at = read_cursor.fetchone()[0]
+                    if last_updated_at and max_updated_at and max_updated_at < last_updated_at:
+                        raise ValueError(f"{table_name}: source updated_at moved behind its watermark")
+
+                lower = last_updated_at - timedelta(minutes=15) if last_updated_at else None
+                current_boundary_hash = overlap_hash(
+                    read_conn, table_name, TABLES[table_name], max_updated_at
                 )
-                if not chunks:
-                    raise ValueError(f"{table_name}: polling window has no source rows")
+                unchanged = (last_updated_at is not None and max_updated_at == last_updated_at
+                             and current_boundary_hash == last_boundary_hash)
+                if max_updated_at is not None and not unchanged:
+                    chunks, scanned_rows = write_parquet(
+                        read_conn, TABLES[table_name], table_name, lower, max_updated_at, started_at, max_file_rows,
+                    )
+                    if not chunks:
+                        raise ValueError(f"{table_name}: polling window has no source rows")
+            finally:
+                if read_conn is not connection:
+                    read_conn.close()
 
         if chunks:
             day = started_at.strftime("%Y-%m-%d")

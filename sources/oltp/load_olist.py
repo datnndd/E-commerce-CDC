@@ -56,6 +56,8 @@ def database_settings() -> dict[str, str]:
             raise ValueError(f"Set {name} in the environment or .env")
         settings[name] = value
     settings["POSTGRES_HOST"] = os.environ.get("POSTGRES_HOST") or local.get("POSTGRES_HOST") or "127.0.0.1"
+    settings["POSTGRES_REPLICA_HOST"] = os.environ.get("POSTGRES_REPLICA_HOST") or local.get("POSTGRES_REPLICA_HOST") or settings["POSTGRES_HOST"]
+    settings["POSTGRES_REPLICA_PORT"] = os.environ.get("POSTGRES_REPLICA_PORT") or local.get("POSTGRES_REPLICA_PORT") or settings["POSTGRES_PORT"]
     settings["POSTGRES_SSLMODE"] = os.environ.get("POSTGRES_SSLMODE") or local.get("POSTGRES_SSLMODE") or "prefer"
     certificate = os.environ.get("POSTGRES_SSLROOTCERT") or local.get("POSTGRES_SSLROOTCERT")
     if certificate:
@@ -76,6 +78,13 @@ def connection_settings(settings: dict[str, str]) -> dict:
     }
     if "POSTGRES_SSLROOTCERT" in settings:
         options["sslrootcert"] = settings["POSTGRES_SSLROOTCERT"]
+    return options
+
+
+def replica_connection_settings(settings: dict[str, str]) -> dict:
+    options = dict(connection_settings(settings))
+    options["host"] = settings.get("POSTGRES_REPLICA_HOST", settings["POSTGRES_HOST"])
+    options["port"] = int(settings.get("POSTGRES_REPLICA_PORT", settings["POSTGRES_PORT"]))
     return options
 
 

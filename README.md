@@ -1,7 +1,7 @@
 # E-Commerce CDC Lakehouse Platform
 
 [![Python](https://img.shields.io/badge/Python-3.13-blue.svg?logo=python&logoColor=white)](https://www.python.org/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18.6-336791.svg?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18.6_Primary--Replica-336791.svg?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Apache Spark](https://img.shields.io/badge/Apache_Spark-4.1-E25A1C.svg?logo=apachespark&logoColor=white)](https://spark.apache.org/)
 [![Delta Lake](https://img.shields.io/badge/Delta_Lake-4.2-00ADD8.svg?logo=delta&logoColor=white)](https://delta.io/)
 [![AWS Glue](https://img.shields.io/badge/AWS_Glue-6.0-232F3E.svg?logo=amazonaws&logoColor=white)](https://aws.amazon.com/glue/)
@@ -12,82 +12,95 @@
 [![Power BI](https://img.shields.io/badge/Power_BI-5_Pages_|_26_Measures-F2C811.svg?logo=powerbi&logoColor=black)](https://powerbi.microsoft.com/)
 [![Great Expectations](https://img.shields.io/badge/Data_Quality-Great_Expectations-FF5A00.svg)](https://greatexpectations.io/)
 
-> **Nền tảng Data Lakehouse E-Commerce xử lý dữ liệu chuẩn Medallion Architecture (Bronze → Silver → Gold)** với cơ chế **Change Data Capture (CDC)** tiệm cận thời gian thực, khử trùng lặp dữ liệu (Idempotent Deduplication), theo dõi lịch sử biến động dữ liệu SCD Type 2, kiểm soát chất lượng qua Great Expectations và trực quan hóa số liệu trên Power BI.
+> **Production-grade End-to-End Medallion Lakehouse (Bronze → Silver → Gold)** featuring **PostgreSQL Primary-Replica OLTP isolation**, near-real-time **Change Data Capture (CDC)**, idempotent **Delta Lake merges on Apache Spark / AWS Glue 6.0**, **dbt Core dimensional modeling** (Star Schema with SCD Type 2 tracking & 6 Business Data Marts), automated **Apache Airflow orchestration**, and an executive **Power BI analytics dashboard** connected via Amazon Athena.
 
 ---
 
-## 📌 Mục lục
+## 📌 Table of Contents
 
-- [1. Giới thiệu Dự án](#1-giới-thiệu-dự-án)
-  - [Bối cảnh & Bài toán giải quyết](#bối-cảnh--bài-toán-giải-quyết)
-  - [Nguồn dữ liệu thực tế & Bộ mô phỏng](#nguồn-dữ-liệu-thực-tế--bộ-mô-phỏng)
-  - [Điểm nổi bật của hệ thống](#điểm-nổi-bật-của-hệ-thống)
-- [2. Kiến trúc Pipeline (Lakehouse Architecture)](#2-kiến-trúc-pipeline-lakehouse-architecture)
-  - [Sơ đồ Kiến trúc Tổng thể](#sơ-đồ-kiến-trúc-tổng-thể)
-  - [Chi tiết Luồng Dữ liệu theo Mô hình Medallion](#chi-tiết-luồng-dữ-liệu-theo-mô-hình-medallion)
-- [3. Công nghệ Sử dụng (Tech Stack)](#3-công-nghệ-sử-dụng-tech-stack)
-- [4. Thiết kế Mô hình Dữ liệu (Data Modeling)](#4-thiết-kế-mô-hình-dữ-liệu-data-modeling)
-  - [Theo dõi lịch sử SCD Type 2](#theo-dõi-lịch-sử-scd-type-2)
-  - [Mô hình Star Schema & 6 Business Data Marts](#mô-hình-star-schema--6-business-data-marts)
-  - [Lineage dbt DAG](#lineage-dbt-dag)
-- [5. Báo cáo & Trực quan hóa (Power BI Dashboard)](#5-báo-cáo--trực-quan-hóa-power-bi-dashboard)
-- [6. Cấu trúc Thư mục Dự án](#6-cấu-trúc-thư-mục-dự-án)
-- [7. Hướng dẫn Cài đặt & Chạy thử (Getting Started)](#7-hướng-dẫn-cài-đặt--chạy-thử-getting-started)
-  - [Yêu cầu Môi trường](#yêu-cầu-môi-trường)
-  - [Bước 1: Khởi động Local Stack & Cài đặt Thư viện](#bước-1-khởi-động-local-stack--cài-đặt-thư-viện)
-  - [Bước 2: Nạp Dữ liệu Olist & Tạo Baseline](#bước-2-nạp-dữ-liệu-olist--tạo-baseline)
-  - [Bước 3: Trích xuất CDC lên S3 Bronze](#bước-3-trích-xuất-cdc-lên-s3-bronze)
-  - [Bước 4: Chạy Spark Transformation & Quality Gate (Silver)](#bước-4-chạy-spark-transformation--quality-gate-silver)
-  - [Bước 5: Xây dựng Star Schema & Marts với dbt (Gold)](#bước-5-xây-dựng-star-schema--marts-với-dbt-gold)
-  - [Bước 6: Vận hành Tự động với Apache Airflow](#bước-6-vận-hành-tự-động-với-apache-airflow)
-  - [Bước 7: Kết nối & Làm mới Báo cáo Power BI](#bước-7-kết-nối--làm-mới-báo-cáo-power-bi)
-- [8. Kiểm chứng Dữ liệu & Đối soát Số liệu (Data Reconciliation)](#8-kiểm-chứng-dữ-liệu--đối-soát-số-liệu-data-reconciliation)
-
----
-
-## 1. Giới thiệu Dự án
-
-### Bối cảnh & Bài toán giải quyết
-Trong ngành bán lẻ và thương mại điện tử (E-Commerce), dữ liệu giao dịch phát sinh liên tục trên các cơ sở dữ liệu OLTP (đơn hàng mới, thanh toán, thay đổi địa chỉ nhận hàng, cập nhật giá niêm yết, đánh giá sản phẩm). Việc truy vấn phân tích trực tiếp trên hệ thống giao dịch làm suy giảm hiệu năng và thiếu tính lịch sử.
-
-Dự án này xây dựng một nền tảng **Modern Data Lakehouse** hoàn chỉnh phục vụ:
-- **Đồng bộ dữ liệu thời gian thực / cận thời gian thực (CDC)** từ PostgreSQL lên Data Lake mà không làm quá tải hệ thống nguồn.
-- **Bảo toàn tính toàn vẹn (Zero Data Loss) và Idempotency**: Dữ liệu nạp lại nhiều lần vẫn cho kết quả nhất quán, không trùng lặp, không thất thoát đơn hàng.
-- **Theo dõi lịch sử thay đổi (Slowly Changing Dimensions - SCD Type 2)**: Lưu lại giá sản phẩm và địa chỉ khách hàng theo từng thời điểm để báo cáo doanh thu chính xác theo giá tại thời điểm mua, thay vì giá hiện tại.
-- **Tự động hóa kiểm soát chất lượng dữ liệu (Data Quality Gates)**: Cách ly bản ghi lỗi (quarantine pattern) và dừng pipeline ngay khi phát hiện vi phạm nghiệp vụ nghiêm trọng.
-- **Cung cấp lớp dữ liệu phân tích nghiệp vụ tốc độ cao**: Xây dựng 6 Business Data Marts và dashboard 5 trang chuyên sâu trên Power BI kết nối qua Amazon Athena.
-
-### Nguồn dữ liệu thực tế & Bộ mô phỏng
-1. **Dữ liệu lịch sử Olist E-Commerce (Brazil)**:
-   - Gồm ~100.000 đơn hàng giai đoạn 2016–2018 với 9 bảng quan hệ: `customers`, `sellers`, `products`, `orders`, `order_items`, `payments`, `reviews`, `geolocation`, `category_translation`.
-2. **Bộ mô phỏng thay đổi OLTP (Daily Order Simulator)**:
-   - Tạo các đơn hàng mới, cập nhật giá sản phẩm (`products.current_price`), thay đổi địa chỉ khách hàng và ghi nhận xóa mềm (`is_deleted`/`deleted_at`) để kiểm chứng khả năng bắt sự kiện của bộ CDC.
-3. **Dữ liệu hành vi người dùng (Clickstream Events)**:
-   - Sinh chuỗi sự kiện người dùng (page view, add-to-cart, checkout, purchase) gắn kết chính xác với thông tin khách hàng và đơn hàng thực tế.
-4. **Dữ liệu API bên ngoài (External APIs)**:
-   - Tỷ giá ngoại tệ BRL/USD hàng ngày từ **Frankfurter API** và dữ liệu chiến dịch tiếp thị (**Marketing Campaigns**).
-
-### Điểm nổi bật của hệ thống
-- **Cơ chế CDC Overlap Fingerprinting & Manifest Tracking**: Cửa sổ trượt 15 phút chống rớt dữ liệu in-flight, tự động băm hash để bỏ qua việc ghi lên S3 khi dữ liệu không đổi, tiết kiệm chi phí băng thông và lưu trữ.
-- **Kiến trúc kép linh hoạt (Dual-Engine Capability)**: Hỗ trợ vận hành mượt mà trên môi trường Docker Linux cục bộ, **AWS Cloud-Native** (AWS Glue 6.0 + S3 + Athena v3) hoặc **Databricks Serverless** (Unity Catalog).
-- **100% Data Reconciliation**: Đối soát khớp từng cent doanh thu và từng đơn hàng giữa OLTP ban đầu và các tầng phân tích Gold (13.591.643,70 BRL GMV; 99.441 orders).
+- [1. Project Overview & Architecture Goals](#1-project-overview--architecture-goals)
+  - [Business Context & Problem Statement](#business-context--problem-statement)
+  - [Real-World Datasets & Daily Transaction Simulator](#real-world-datasets--daily-transaction-simulator)
+  - [Key Architectural Highlights](#key-architectural-highlights)
+- [2. End-to-End Pipeline Architecture](#2-end-to-end-pipeline-architecture)
+  - [Architecture Diagram](#architecture-diagram)
+  - [Medallion Lakehouse Data Flow](#medallion-lakehouse-data-flow)
+- [3. PostgreSQL Primary-Replica CDC Isolation Pattern](#3-postgresql-primary-replica-cdc-isolation-pattern)
+  - [Design Rationale: Zero OLTP Contention](#design-rationale-zero-oltp-contention)
+  - [Primary-Replica Interaction Flow](#primary-replica-interaction-flow)
+  - [Configuration & Connection Decoupling](#configuration--connection-decoupling)
+- [4. Medallion Lakehouse Deep-Dive](#4-medallion-lakehouse-deep-dive)
+  - [Bronze Layer: CDC Polling & Committed Manifest Protocol](#bronze-layer-cdc-polling--committed-manifest-protocol)
+  - [Silver Layer: Delta Lake Idempotent Merge & Quarantine Routing](#silver-layer-delta-lake-idempotent-merge--quarantine-routing)
+  - [Gold Layer: dbt Star Schema & 6 Business Data Marts](#gold-layer-dbt-star-schema--6-business-data-marts)
+  - [Serving Layer: Amazon Athena Engine v3](#serving-layer-amazon-athena-engine-v3)
+  - [Orchestration & DataOps: Apache Airflow 3](#orchestration--dataops-apache-airflow-3)
+- [5. Technology Stack](#5-technology-stack)
+- [6. Data Modeling & Dimensional Design](#6-data-modeling--dimensional-design)
+  - [Slowly Changing Dimensions (SCD Type 2)](#slowly-changing-dimensions-scd-type-2)
+  - [Conformed Star Schema & Analytical Marts](#conformed-star-schema--analytical-marts)
+  - [dbt Lineage Graph](#dbt-lineage-graph)
+- [7. Business Intelligence & Power BI Dashboard](#7-business-intelligence--power-bi-dashboard)
+- [8. Repository Layout](#8-repository-layout)
+- [9. Quickstart & Local Reproduction Guide](#9-quickstart--local-reproduction-guide)
+  - [Prerequisites](#prerequisites)
+  - [Step 1: Local Stack Initialization & Python Tooling](#step-1-local-stack-initialization--python-tooling)
+  - [Step 2: Seed Olist Dataset & Establish Audit Baseline](#step-2-seed-olist-dataset--establish-audit-baseline)
+  - [Step 3: Ingest CDC to Amazon S3 Bronze](#step-3-ingest-cdc-to-amazon-s3-bronze)
+  - [Step 4: Execute Spark Silver Transformation & Quality Gate](#step-4-execute-spark-silver-transformation--quality-gate)
+  - [Step 5: Build Gold Star Schema & Marts with dbt](#step-5-build-gold-star-schema--marts-with-dbt)
+  - [Step 6: Orchestrate Pipeline with Apache Airflow](#step-6-orchestrate-pipeline-with-apache-airflow)
+  - [Step 7: Connect & Refresh Power BI Dashboard](#step-7-connect--refresh-power-bi-dashboard)
+- [10. Data Reconciliation & Audit Verification](#10-data-reconciliation--audit-verification)
 
 ---
 
-## 2. Kiến trúc Pipeline (Lakehouse Architecture)
+## 1. Project Overview & Architecture Goals
 
-### Sơ đồ Kiến trúc Tổng thể
+### Business Context & Problem Statement
+In fast-paced e-commerce retail environments, transactional databases (OLTP) continuously experience high-frequency state changes: incoming orders, payment captures, delivery status transitions, customer address updates, catalog price adjustments, and customer reviews. Running intensive analytical queries and bulk extraction jobs directly against production transactional databases creates severe thread locking, CPU spikes, and degrades customer checkout latencies.
+
+This platform implements an enterprise-grade **Modern Data Lakehouse** engineered to solve these challenges:
+- **Zero OLTP Impact (Primary-Replica Isolation)**: Decouples write-intensive storefront checkouts from analytical CDC batch extractions via dedicated streaming read replicas.
+- **Near-Real-Time Change Data Capture (CDC)**: Incremental polling engine equipped with 15-minute sliding overlap windows to capture in-flight transactions without data loss.
+- **Strict Idempotency & Zero Data Loss**: Guarantees that arbitrary re-runs, historical backfills, or network glitches will never duplicate records or inflate GMV numbers.
+- **Historical Accuracy (SCD Type 2)**: Tracks point-in-time catalog price changes and customer relocation history so historical sales metrics reflect actual prices at purchase time.
+- **Automated Data Quality & Quarantine Architecture**: Evaluates Great Expectations assertions and isolates malformed records into a dedicated quarantine table without halting the pipeline.
+- **Executive & Operational BI**: Serves curated dimensional data marts through Amazon Athena to a multi-page Power BI dashboard.
+
+### Real-World Datasets & Daily Transaction Simulator
+1. **Brazilian E-Commerce Dataset (Olist)**:
+   - Real-world production dataset consisting of ~100,000 orders spanning 2016–2018 across 9 relational tables: `customers`, `sellers`, `products`, `orders`, `order_items`, `payments`, `reviews`, `geolocation`, and `category_translation`.
+2. **Daily Order Simulator**:
+   - Generates realistic post-snapshot transactional updates: new order placement, product price updates (`products.current_price`), customer address migrations, and soft deletes (`is_deleted`/`deleted_at`) to rigorously test CDC detection.
+3. **Clickstream Event Generator**:
+   - Produces clickstream events (`view`, `add_to_cart`, `checkout`, `purchase`) linked to real orders and customer identities to fuel conversion funnel analytics.
+4. **External Reference APIs**:
+   - Real-time foreign exchange rates (BRL/USD daily rates via **Frankfurter API** with exponential backoff retries) and synthetic multi-channel marketing campaigns.
+
+### Key Architectural Highlights
+- **100% Data Fidelity Across Layers**: Fully verified against an independent baseline—all 99,441 orders, 112,650 items, and BRL 13,591,643.70 GMV reconcile across PostgreSQL, S3 Bronze, Delta Silver, and dbt Gold.
+- **Dual-Engine Flexibility**: Fully runnable locally inside Docker containers (Linux / Java 17 / Spark 4.1) or scalable in the cloud on **AWS Serverless** (AWS Glue 6.0 + S3 + Athena v3) or **Databricks Serverless** (Unity Catalog).
+- **122/122 dbt Nodes Passed**: 85 automated data tests and schema validations with 0 errors.
+
+---
+
+## 2. End-to-End Pipeline Architecture
+
+### Architecture Diagram
 
 ![E-commerce CDC Lakehouse Architecture](docs/images/lakehouse-architecture.svg)
 
-### Chi tiết Luồng Dữ liệu theo Mô hình Medallion
+### Medallion Lakehouse Data Flow
 
 ```mermaid
 flowchart LR
-    subgraph Sources ["1. DATA SOURCES"]
-        PG["PostgreSQL OLTP\n(Olist + Simulator)"]
+    subgraph Sources ["1. PRIMARY-REPLICA & SOURCES"]
+        P_DB[("PostgreSQL Primary\n(Port 5432 - Writes)")]
+        R_DB[("PostgreSQL Read Replica\n(Port 5433 - Read-Only)")]
         API["External APIs\n(FX Rates & Campaigns)"]
         LOG["Clickstream Gen\n(JSONL Events)"]
+        P_DB -- "WAL Streaming Replication\n(&lt;1s Lag)" --> R_DB
     end
 
     subgraph Bronze ["2. BRONZE LAYER (Amazon S3)"]
@@ -99,7 +112,7 @@ flowchart LR
         GLUE["AWS Glue 6.0 / Spark 4.1\n(Delta Lake 4.2)"]
         GX{"Great Expectations\nQuality Gate"}
         SLV[("12 Clean Delta Tables\nGlue Data Catalog")]
-        QUAR[("silver_quarantine\n(Bad Records)")]
+        QUAR[("silver_quarantine\n(Isolated Bad Records)")]
     end
 
     subgraph Gold ["4. GOLD LAYER (dbt Core)"]
@@ -113,7 +126,9 @@ flowchart LR
         PBI["Microsoft Power BI\n(5 Report Pages / 26 Measures)"]
     end
 
-    Sources --> EXT
+    R_DB --> EXT
+    API --> EXT
+    LOG --> EXT
     EXT --> S3B
     S3B --> GLUE
     GLUE --> GX
@@ -126,78 +141,144 @@ flowchart LR
     ATHENA --> PBI
 ```
 
-#### 1. Tầng Nguồn (Sources Layer)
-- **PostgreSQL 18**: Quản lý dữ liệu giao dịch với bảng kiểm soát CDC `cdc_watermark` ghi nhận mốc `last_updated_at`, `last_run_at` và `last_boundary_hash`.
-- **Frankfurter API**: Cung cấp tỷ giá hối đoái BRL/USD có cơ chế retry 3 lần với exponential backoff.
-- **Clickstream Generator**: Mô phỏng hành trình người dùng dựa trên các đơn hàng đã nạp.
+---
 
-#### 2. Tầng Bronze (Raw Data on Amazon S3)
-- **CDC Polling & Watermarking**: Trích xuất dữ liệu mới hoặc cập nhật từ PostgreSQL.
-- **15-Phút Sliding Overlap Window**: Quét lùi 15 phút trước mốc watermark để bắt trọn các giao dịch dài (long transactions / in-flight updates).
-- **Overlap Fingerprint**: Tính hàm băm SHA-256 trên tập khóa và timestamp trong cửa sổ overlap. Nếu fingerprint trùng khớp với lần chạy trước, pipeline bỏ qua upload S3 (tránh ghi đè dữ liệu trùng và tiết kiệm chi phí).
-- **Committed Manifest Protocol**: Mỗi batch ghi Parquet đi kèm file metadata `_manifest.json` ghi rõ trạng thái `status: committed`, số lượng bản ghi, dung lượng byte và mã SHA-256 của từng file. Tầng Silver chỉ đọc các batch có manifest hợp lệ.
+## 3. PostgreSQL Primary-Replica CDC Isolation Pattern
 
-#### 3. Tầng Silver (Cleaned Delta Lake)
-- **Engine**: AWS Glue 6.0 (Spark 4.1.1 + Delta Lake 4.2.0) hoặc PySpark container cục bộ.
-- **Idempotent CDC MERGE**: Sử dụng cú pháp `MERGE INTO` của Delta Lake:
-  - Bản ghi mới hơn (`source.updated_at > target.updated_at`) sẽ cập nhật bản ghi cũ.
-  - Bản ghi trùng timestamp được giải quyết bằng hash bản ghi.
-  - Dữ liệu cũ hơn hoặc lặp lại tuyệt đối không ghi đè dữ liệu mới.
-- **Quality Gate & Quarantine**:
-  - Tích hợp **Great Expectations** kiểm tra: khóa chính không null, giá trị dương, toàn vẹn khóa ngoại giữa đơn hàng và khách hàng.
-  - Các bản ghi vi phạm (ví dụ: `price < 0`, customer_id không tồn tại) được chuyển vào bảng `silver_quarantine` kèm lý do lỗi mà không làm sập pipeline.
-- **Catalog Registration**: 12 bảng Silver sạch được đăng ký tự động vào **AWS Glue Data Catalog**.
+### Design Rationale: Zero OLTP Contention
+In production enterprise architectures, running high-frequency CDC polling queries, massive table scans, and 15-minute sliding overlap boundary fingerprint checks directly against the primary transactional database introduces severe risk:
+1. **Row and Table Locks**: Long-running scans block transactional updates on active shopping carts and pending payments.
+2. **Buffer Cache Eviction**: Heavy analytical queries flush frequently accessed OLTP pages from shared buffers, causing latency spikes for customer checkouts.
+3. **CPU & I/O Spikes**: Analytical filtering consumes resources intended for user-facing API workloads.
 
-#### 4. Tầng Gold (Dimensional Modeling & Marts)
-- **Engine**: **dbt Core** (`dbt-glue` hoặc `dbt-databricks`) với 122 model, snapshot và bài test.
-- **SCD Type 2**: Snapshot `dim_customer_history` và `dim_product_history` theo dõi biến động địa chỉ khách hàng và giá bán sản phẩm theo thời gian (`dbt_valid_from`, `dbt_valid_to`).
-- **Star Schema**: 7 chiều chuẩn hóa (Conformed Dimensions) và 7 bảng Fact phân tách rõ ràng các nghiệp vụ: đơn hàng, chi tiết đơn, thanh toán, đánh giá, clickstream, phiên truy cập, tỷ giá.
-- **6 Business Marts**: Bảng tổng hợp phục vụ trực tiếp cho báo cáo và phân tích quản trị.
+To eliminate these issues, this project implements a **Primary-Replica Isolation Pattern**:
+- **Primary Node (`POSTGRES_HOST:5432`)**: Dedicated to OLTP write transactions (customer checkouts, payment state machine, simulator updates). Configured with `wal_level=logical`.
+- **Physical Streaming Replication**: Continuously streams Write-Ahead Logs (WAL) to the read replica with sub-second replication latency.
+- **Read Replica Node (`POSTGRES_REPLICA_HOST:5433`)**: Dedicated read-only endpoint where the Python CDC Extractor performs all large scans, timestamp range queries, and boundary fingerprint hashes.
+- **Transactional Watermark State**: Watermark updates are written back to the Primary `cdc_watermark` table using transactional `FOR UPDATE` semantics to ensure deterministic progression.
 
-#### 5. Tầng Phục vụ & Trực quan (Serving & BI)
-- **Amazon Athena (Engine v3)**: Cho phép truy vấn serverless trực tiếp trên các bảng Delta tầng Gold thông qua Glue Data Catalog.
-- **Power BI Desktop & Service**: Kết nối qua Athena ODBC DSN, sử dụng mô hình Import mode với 5 trang báo cáo và 26 DAX measures chuyên sâu.
+### Primary-Replica Interaction Flow
 
-#### 6. Tầng Điều phối & Giám sát (Orchestration & DataOps)
-- **Apache Airflow 3**: DAG `ecommerce_cdc_daily` chạy tự động hàng ngày:
-  - Kiểm tra điều kiện môi trường (Preflight check).
-  - Trích xuất dữ liệu song song lên Bronze.
-  - Gọi AWS Glue Job chạy Silver và kích hoạt Great Expectations.
-  - Chạy `dbt build` tầng Gold.
-  - Đăng ký bảng lên Athena.
-  - Ghi nhận trạng thái vào bảng kiểm toán `ops_pipeline_runs` và bắn Webhook cảnh báo khi có lỗi.
+![PostgreSQL Primary-Replica CDC Isolation Pattern](docs/images/primary-replica-cdc.svg)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Storefront / Simulator
+    participant Primary as PostgreSQL Primary (Port 5432)
+    participant WAL as WAL Streaming Replication
+    participant Replica as PostgreSQL Read Replica (Port 5433)
+    participant CDC as Python CDC Extractor Engine
+    participant S3 as Amazon S3 Bronze Bucket
+
+    User->>Primary: INSERT / UPDATE (Orders, Payments, Customers)
+    Primary->>WAL: Append Write-Ahead Log
+    WAL-->>Replica: Continuous Streaming Sync (<1s lag)
+    Note over Primary,Replica: Primary OLTP shielded from heavy read load!
+
+    CDC->>Primary: Lock & Read Watermark (SELECT ... FOR UPDATE)
+    Primary-->>CDC: last_updated_at, last_boundary_hash
+    CDC->>Replica: Execute Scans (SELECT * WHERE updated_at > window)
+    Replica-->>CDC: 10,000-row record chunks
+    CDC->>S3: Upload part-*.parquet + _manifest.json (SHA-256)
+    CDC->>Primary: Commit Watermark (UPDATE cdc_watermark SET ...)
+    Primary-->>CDC: Watermark Transaction Committed
+```
+
+### Configuration & Connection Decoupling
+The extraction engine decouples read queries from metadata commits seamlessly:
+```python
+# ingestion/cdc_extract.py
+primary_opts = connection_settings(settings)
+replica_opts = replica_connection_settings(settings)
+
+# Table data scans are offloaded to the Read Replica
+read_conn = connection if replica_opts == primary_opts else psycopg.connect(**replica_opts)
+try:
+    with read_conn.cursor() as read_cursor:
+        read_cursor.execute("SELECT max(updated_at) FROM ...")
+        # Heavy overlap fingerprint & parquet generation run on replica:
+        chunks, scanned_rows = write_parquet(read_conn, ...)
+finally:
+    if read_conn is not connection:
+        read_conn.close()
+
+# Watermark progress is committed back to Primary
+cursor.execute("UPDATE cdc_watermark SET last_updated_at = %s, ...")
+```
+If `POSTGRES_REPLICA_HOST` is not configured, the extractor automatically falls back to `POSTGRES_HOST`, ensuring backwards compatibility for local single-node development.
 
 ---
 
-## 3. Công nghệ Sử dụng (Tech Stack)
+## 4. Medallion Lakehouse Deep-Dive
 
-| Thành phần | Công nghệ | Phiên bản / Chi tiết | Vai trò trong Hệ thống |
+### Bronze Layer: CDC Polling & Committed Manifest Protocol
+The Python CDC engine (`ingestion/cdc_extract.py`) polls source tables into immutable Bronze storage on Amazon S3:
+- **15-Minute Sliding Overlap Window**: For each poll, the lower boundary is set to `last_updated_at - 15 minutes` to catch in-flight transactions committed with slightly older timestamps.
+- **Boundary Fingerprinting**: Computes a SHA-256 hash of all primary keys and timestamps in the overlap window. If both the upper timestamp and fingerprint match the prior run, S3 upload is skipped, resulting in **zero unnecessary S3 API calls or storage bloat**.
+- **Committed Manifest Protocol**: Data is written into chunked Parquet files (`part-0000.parquet`, rolling every 500,000 rows). Once all chunks are uploaded, an atomic `_manifest.json` is published recording the run ID, source window, total row count, per-file byte sizes, and SHA-256 file digests. Downstream Silver jobs only read batches marked `status: committed`.
+
+### Silver Layer: Delta Lake Idempotent Merge & Quarantine Routing
+Executed via **AWS Glue 6.0** (Spark 4.1.1 + Delta Lake 4.2.0) or Dockerized local PySpark:
+- **Manifest Integrity Check**: Reads only committed Bronze manifests, verifying that file sizes and SHA-256 hashes match before processing.
+- **Idempotent Delta `MERGE INTO`**: Merges source records into Delta Lake tables matching on primary keys:
+  - Updates existing rows when `source.updated_at > target.updated_at`.
+  - Ties in timestamps are resolved deterministically using row version hashes.
+  - Older records or duplicated runs are ignored, guaranteeing idempotency.
+- **Great Expectations Quality Gate**: Enforces schema contracts, non-null primary keys, price ranges, and relational integrity between orders, customers, and order items.
+- **Quarantine Pattern (`silver_quarantine`)**: Bad records (e.g. orphan foreign keys, negative item prices, future event timestamps) are routed to a dedicated quarantine Delta table with the violation reason and source `run_id`, preventing pipeline failure while preserving auditability.
+- **12 Curated Tables**: Synchronized with AWS Glue Data Catalog / Databricks Unity Catalog.
+
+### Gold Layer: dbt Star Schema & 6 Business Data Marts
+Managed by **dbt Core** (`dbt-glue` / `dbt-databricks`):
+- **122 Nodes**: Comprising staging views, SCD Type 2 snapshots, conformed dimensions, facts, and analytical data marts.
+- **85 Automated Data Tests**: Verifying uniqueness, non-null constraints, accepted values, and referential integrity across dimensional relationships.
+- **Incremental Delta Merge**: Daily fact tables run incrementally to process only new or modified Silver rows.
+
+### Serving Layer: Amazon Athena Engine v3
+- Provides serverless SQL execution on top of Delta Lake tables registered in the AWS Glue Data Catalog.
+- Enables standard ODBC/JDBC connectivity for Power BI without maintaining always-on cluster compute.
+
+### Orchestration & DataOps: Apache Airflow 3
+- The `ecommerce_cdc_daily` DAG runs daily with built-in resilience:
+  1. `runtime_check`: Preflight environment validation (S3 buckets, Glue IAM roles, Athena workgroups).
+  2. Parallel extraction of PostgreSQL CDC, Frankfurter FX rates, marketing campaigns, and clickstream logs.
+  3. `run_silver_transform_on_glue`: Triggers AWS Glue Spark ETL and polls for quality gate completion.
+  4. `build_gold_and_marts_dbt`: Executes `dbt build` against Delta Lake.
+  5. `publish_athena_tables`: Synchronizes Delta table definitions and views in Athena.
+  6. Centralized auditing in `ops_pipeline_runs` and instant webhook notifications on task failure.
+
+---
+
+## 5. Technology Stack
+
+| Architecture Layer | Technology | Version | Purpose in Project |
 |---|---|---|---|
-| **Storage & Data Lake** | **Amazon S3** | Standard (SSE-S3) | Lưu trữ phân tầng Medallion (`bronze/`, `silver/`, `gold/`) |
-| **Storage Format** | **Delta Lake** | 4.2.0 | Hỗ trợ ACID transactions, Time Travel, và Idempotent `MERGE` |
-| **OLTP Database** | **PostgreSQL** | 18.6 | Cơ sở dữ liệu giao dịch nguồn, cấu hình `wal_level=logical` |
-| **Data Processing** | **AWS Glue / Apache Spark** | Glue 6.0 / Spark 4.1.1 | Engine xử lý dữ liệu lớn phân tán tầng Silver & Data Quality |
-| **Data Modeling** | **dbt Core** | `dbt-glue` / `dbt-core` | Xây dựng Star Schema, SCD Type 2 Snapshots & Business Marts |
-| **Query Engine** | **Amazon Athena** | Engine v3 | Truy vấn SQL Serverless trên Delta Lake phục vụ BI |
-| **Data Catalog** | **AWS Glue Data Catalog** | Managed | Quản lý schema và siêu dữ liệu cho các bảng Silver và Gold |
-| **Orchestration** | **Apache Airflow** | 3.3.2 (Dockerized) | Lập lịch, điều phối DAG, kiểm tra preflight và cảnh báo lỗi |
-| **Data Quality** | **Great Expectations** | 1.24+ | Kiểm tra chất lượng dữ liệu tự động tại chốt chặn Silver |
-| **Business Intelligence** | **Microsoft Power BI** | PBIP / Athena Connector | Xây dựng dashboard tương tác 5 trang, 26 DAX measures |
-| **Language & Tooling** | **Python / uv** | Python 3.13 / uv | Quản lý gói siêu tốc, viết scripts trích xuất CDC và kiểm thử |
-| **ORM & Migrations** | **SQLAlchemy / Alembic** | SQLAlchemy 2.0 / Alembic 1.17 | Quản lý schema database nguồn và bộ mô phỏng giao dịch |
-| **Containerization** | **Docker & Compose** | Compose v2 | Đóng gói môi trường PostgreSQL, Airflow và Spark local |
+| **Storage & Lakehouse** | **Amazon S3** | Standard (SSE-S3) | Multi-tier object storage (`bronze/`, `silver/`, `gold/`) |
+| **Storage Format** | **Delta Lake** | 4.2.0 | ACID transactions, Time Travel, idempotent `MERGE INTO` |
+| **Transactional DB** | **PostgreSQL** | 18.6 | Primary-Replica OLTP with `wal_level=logical` streaming |
+| **Data Processing** | **AWS Glue / Apache Spark** | Glue 6.0 / Spark 4.1.1 | Scalable distributed data transformation and quality gates |
+| **Data Modeling** | **dbt Core** | `dbt-glue` / `dbt-core` | Star Schema modeling, SCD Type 2 snapshots, and 6 marts |
+| **Query Engine** | **Amazon Athena** | Engine v3 | Serverless SQL query engine over Delta Lake tables |
+| **Metadata Catalog** | **AWS Glue Data Catalog** | Managed | Governed table metadata, schema registry, and partition mapping |
+| **Orchestration** | **Apache Airflow** | 3.3.2 | Automated DAG scheduling, preflight checks, alerting |
+| **Data Quality** | **Great Expectations** | 1.24+ | Automated assertion checks and data quality gates |
+| **Analytics & BI** | **Microsoft Power BI** | PBIP / Athena ODBC | 5 interactive pages, 7 Import tables, 26 DAX measures |
+| **Development Tooling** | **Python / uv** | Python 3.13 / uv | High-performance Python package management & CLI scripts |
+| **ORM & Migrations** | **SQLAlchemy / Alembic** | SQLAlchemy 2.0 / Alembic 1.17 | OLTP schema migration and daily transaction simulator |
+| **Containerization** | **Docker & Compose** | Compose v2 | Local container runtime for PostgreSQL, Airflow, and PySpark |
 
 ---
 
-## 4. Thiết kế Mô hình Dữ liệu (Data Modeling)
+## 6. Data Modeling & Dimensional Design
 
-### Theo dõi lịch sử SCD Type 2
-Hệ thống áp dụng kỹ thuật **Slowly Changing Dimensions (SCD Type 2)** thông qua dbt snapshots:
-- `dim_customer_history`: Ghi nhận sự thay đổi địa chỉ (thành phố, bang, mã bưu điện ZIP) của khách hàng.
-- `dim_product_history`: Ghi nhận sự thay đổi giá niêm yết của sản phẩm (`current_price`).
-- Khi một đơn hàng lịch sử được phân tích, mô hình sẽ kết hợp với snapshot tại thời điểm mua hàng thay vì lấy thông tin mới nhất, đảm bảo tính đúng đắn của doanh thu và địa lý khách hàng trong quá khứ.
+### Slowly Changing Dimensions (SCD Type 2)
+To preserve historical truth, changes to dimensional attributes create new version records with effective time ranges:
+- `dim_customer_history`: Captures customer address movements (city, state, ZIP prefix). Historical orders link to the address at purchase time, ensuring regional sales metrics remain historically accurate.
+- `dim_product_history`: Tracks catalog price adjustments (`current_price`). Historical order revenue remains bound to the actual purchase price in `order_items.price`, while catalog analysis reflects current pricing.
+- Handled natively via `dbt snapshot` with `check` strategy on tracking columns, generating `dbt_valid_from` and `dbt_valid_to` timestamps.
 
-### Mô hình Star Schema & 6 Business Data Marts
+### Conformed Star Schema & Analytical Marts
 
 ```
                        ┌───────────────────────┐
@@ -217,238 +298,241 @@ Hệ thống áp dụng kỹ thuật **Slowly Changing Dimensions (SCD Type 2)**
 └────────────────┘     └───────────────────────┘     └────────────────┘
 ```
 
-#### 6 Business Data Marts phục vụ phân tích chuyên sâu:
+#### 6 Dedicated Business Data Marts:
 1. **`mart_daily_sales`**:
-   - **Grain**: Ngày mua hàng (`purchase_date`) × Bang của khách hàng (`customer_state`).
-   - **Metrics**: Tổng đơn hàng, số đơn giao thành công, tổng doanh thu hàng hóa (`delivered_item_revenue`), phí vận chuyển, giá trị đơn trung bình (AOV).
+   - **Grain**: `purchase_date` × `customer_state`.
+   - **Metrics**: Order count, delivered order count, delivered item revenue, total freight value, average order value (AOV).
 2. **`mart_product_performance`**:
-   - **Grain**: Sản phẩm (`product_id`) × Người bán (`seller_id`) × Danh mục (`category_name`).
-   - **Metrics**: Số lượng bán ra, tổng doanh thu, doanh số lũy kế, điểm đánh giá trung bình.
+   - **Grain**: `product_id` × `seller_id` × `category_name`.
+   - **Metrics**: Units sold, total item GMV, historical sales volume, average review score.
 3. **`mart_customer_rfm`**:
-   - **Grain**: Khách hàng duy nhất (`customer_unique_id`).
-   - **Mô hình RFM**: Tính điểm Recency (ngày mua gần nhất), Frequency (tần suất mua), Monetary (tổng chi tiêu) theo thang điểm 1–5 (Percentile Ranking).
-   - **Phân khúc**: Champions, Loyal Customers, At Risk, Can't Lose Them, Hibernating.
+   - **Grain**: Unique customer (`customer_unique_id`).
+   - **RFM Segmentation**: Recency, Frequency, and Monetary percentile rankings (scores 1–5).
+   - **Customer Segments**: *Champions*, *Loyal Customers*, *At Risk*, *Can't Lose Them*, and *Hibernating*.
 4. **`mart_funnel_daily`**:
-   - **Grain**: Ngày bắt đầu phiên (`session_date`) × Thiết bị (`device`) × Kênh tiếp thị (`channel`).
-   - **Metrics**: Số lượt xem (view), thêm vào giỏ (cart), tiến hành thanh toán (checkout), mua hàng thành công (buy), tỷ lệ chuyển đổi qua từng bước (drop-off rates).
+   - **Grain**: `session_date` × `device` × `channel`.
+   - **Metrics**: User sessions, product views, carts, checkouts, completed purchases, and step-by-step conversion drop-off rates.
 5. **`mart_payment_mix_daily`**:
-   - **Grain**: Ngày mua hàng × Phương thức thanh toán (`payment_type`).
-   - **Metrics**: Tỷ trọng thanh toán thẻ tín dụng (credit card), hóa đơn tiền mặt (boleto), voucher, thẻ ghi nợ; số kỳ trả góp trung bình.
+   - **Grain**: `purchase_date` × `payment_type`.
+   - **Metrics**: Payment distribution (credit card, boleto, voucher, debit card), total payment value, and average installment counts.
 6. **`mart_order_experience_daily`**:
-   - **Grain**: Ngày mua hàng × Bang của khách hàng.
-   - **Metrics**: Thời gian giao hàng thực tế vs dự kiến, tỷ lệ giao trễ hạn (`late_delivery_rate`), điểm review trung bình của các đơn giao trễ vs đúng hẹn.
+   - **Grain**: `purchase_date` × `customer_state`.
+   - **Metrics**: Actual delivery time vs. estimated delivery date, late delivery rate (`late_delivery_rate`), and customer review score correlation.
 
-### Lineage dbt DAG
+### dbt Lineage Graph
 
-Toàn bộ quy trình từ 12 bảng Silver qua Staging, Snapshots, Intermediate, Star Schema Dimensions & Facts tới 6 Business Marts được kiểm chứng hoàn toàn tự động bằng dbt:
+The verified end-to-end data lineage from Silver staging through Star Schema dimensions and facts to the Daily Sales mart:
 
-![dbt Lineage from Silver to Daily Sales Mart](docs/images/dbt-lineage-sales.png)
-
----
-
-## 5. Báo cáo & Trực quan hóa (Power BI Dashboard)
-
-Mô hình phân tích được đóng gói theo định dạng mã nguồn mở chuẩn Microsoft Fabric/Power BI Developer Mode (**Power BI Project - `.pbip`**) tại thư mục `powerbi/`:
-
-- **7 Bảng Import**: 6 Business Marts (`mart_daily_sales`, `mart_product_performance`, `mart_customer_rfm`, `mart_funnel_daily`, `mart_payment_mix_daily`, `mart_order_experience_daily`) + 1 bảng kiểm toán vận hành (`ops_pipeline_runs`).
-- **26 Measures DAX**: Đo lường tăng trưởng doanh thu theo tháng (MoM), tỷ lệ giao trễ hạn, chỉ số hài lòng khách hàng (CSAT), điểm xếp hạng RFM, tỷ lệ chuyển đổi phễu...
-- **Kết nối Amazon Athena**: Kết nối trực tiếp vào Data Lake thông qua Amazon Athena ODBC DSN và On-Premises Data Gateway.
-
-### 5 Trang Báo cáo Chuyên sâu:
-1. **Executive / Sales**: Tổng quan bức tranh doanh thu toàn công ty, tăng trưởng theo thời gian, phân bố địa lý doanh số giữa các bang và các chỉ số tài chính trọng yếu.
-2. **Product Performance**: Phân tích sâu danh mục ngành hàng, top sản phẩm bán chạy, đánh giá hiệu quả kinh doanh của các nhà bán lẻ (sellers).
-3. **Customer / RFM**: Trực quan hóa ma trận phân khúc khách hàng theo mô hình RFM, hỗ trợ đội ngũ Marketing xác định nhóm khách hàng VIP và nhóm có nguy cơ rời bỏ.
-4. **Journey / Experience**: Giám sát trải nghiệm sau bán hàng, thời gian vận chuyển trên từng tuyến giao thông, tỷ lệ trễ hạn và phễu hành vi người dùng.
-5. **Data Quality / Ops**: Bảng theo dõi vận hành kỹ thuật (DataOps), hiển thị trạng thái từng lần chạy pipeline, thời gian thực thi, số bản ghi trích xuất và số bản ghi bị đưa vào quarantine.
+![dbt Lineage from Silver through Daily Sales Mart](docs/images/dbt-lineage-sales.png)
 
 ---
 
-## 6. Cấu trúc Thư mục Dự án
+## 7. Business Intelligence & Power BI Dashboard
+
+The Power BI reporting layer is version-controlled in the modern open Microsoft Fabric format (**Power BI Project - `.pbip`**) inside `powerbi/`:
+
+- **7 Import Tables**: 6 Business Marts (`mart_daily_sales`, `mart_product_performance`, `mart_customer_rfm`, `mart_funnel_daily`, `mart_payment_mix_daily`, `mart_order_experience_daily`) plus the operational audit table `ops_pipeline_runs`.
+- **26 DAX Measures**: Month-over-month (MoM) revenue growth, late delivery percentages, customer satisfaction (CSAT), RFM score distributions, and conversion funnel drop-offs.
+- **Amazon Athena ODBC Connectivity**: Direct connection to AWS Lakehouse data using the Amazon Athena ODBC driver and On-Premises Data Gateway for automated scheduled refresh.
+
+### 5 Specialized Report Pages:
+1. **Executive / Sales**: Company-wide revenue trends, order volume growth, geographical sales distribution across Brazilian states, and top-line financial KPIs.
+2. **Product Performance**: Category-level revenue drivers, top-performing products, catalog pricing analytics, and seller performance metrics.
+3. **Customer / RFM**: Interactive RFM customer segmentation matrix, customer lifetime value distributions, and churn-risk cohorts for marketing campaigns.
+4. **Journey / Experience**: Post-order logistics tracking, freight analysis, carrier delivery delay rates, and review satisfaction scores.
+5. **Data Quality / Ops**: DataOps monitoring view displaying Airflow pipeline run durations, row counts extracted per layer, and quarantine error tallies.
+
+---
+
+## 8. Repository Layout
 
 ```
 E-commerce-CDC/
-├── .env.example                     # Mẫu biến môi trường (Database, S3, Glue, Athena)
-├── compose.yaml                     # Docker Compose cho PostgreSQL 18 và Apache Airflow
-├── pyproject.toml                   # Quản lý dependencies dự án với uv
+├── .env.example                     # Environment configuration template (DB, S3, Glue, Athena)
+├── compose.yaml                     # Docker Compose for PostgreSQL 18 & Apache Airflow 3
+├── pyproject.toml                   # Project dependencies managed via uv
 │
-├── airflow/                         # Cấu hình Apache Airflow
+├── airflow/                         # Apache Airflow orchestration
 │   └── dags/
-│       └── ecommerce_cdc_daily.py   # DAG chính điều phối end-to-end pipeline
+│       └── ecommerce_cdc_daily.py   # Daily production DAG orchestrating end-to-end pipeline
 │
-├── sources/                         # Dữ liệu nguồn & Bộ mô phỏng
-│   ├── oltp/                        # Mô hình SQLAlchemy, Alembic migrations & script nạp Olist
-│   │   ├── models.py                # Định nghĩa schema 9 bảng OLTP + bảng watermark
-│   │   ├── load_olist.py            # Nạp dataset Olist bằng PostgreSQL COPY
-│   │   └── simulate_new_day.py      # Mô phỏng đơn hàng mới, cập nhật giá & xóa mềm
-│   ├── clickstream/                 # Generator tạo logs clickstream JSONL
-│   └── api/                         # Endpoint giả lập chiến dịch và gọi tỷ giá FX
+├── sources/                         # Data sources & Transaction simulator
+│   ├── oltp/                        # SQLAlchemy models, Alembic migrations & Olist loader
+│   │   ├── models.py                # 9 OLTP tables + cdc_watermark schema
+│   │   ├── load_olist.py            # High-speed COPY loader for Olist dataset
+│   │   └── simulate_new_day.py      # Simulator generating new orders, price changes & deletes
+│   ├── clickstream/                 # Synthetic clickstream JSONL generator
+│   └── api/                         # REST API ingesters for Frankfurter FX rates & campaigns
 │
-├── ingestion/                       # Trích xuất dữ liệu lên S3 Bronze
-│   ├── cdc_extract.py               # CDC extractor từ PostgreSQL với overlap fingerprinting
-│   ├── ingest_api.py                # Thu thập tỷ giá & campaigns với manifest
-│   ├── ingest_logs.py               # Nén và upload clickstream JSON.gz
-│   └── local_bronze.py              # Bộ giả lập Bronze cục bộ cho kiểm thử offline
+├── ingestion/                       # Ingestion engine to S3 Bronze
+│   ├── cdc_extract.py               # CDC extractor with Primary-Replica split & manifest protocol
+│   ├── ingest_api.py                # API collector storing responses with manifest SHA-256
+│   ├── ingest_logs.py               # Compressed clickstream JSON.gz uploader
+│   └── local_bronze.py              # Offline Bronze materializer for local development
 │
-├── spark_jobs/                      # Xử lý Spark & Delta Lake tầng Silver
-│   ├── silver_transform.py          # PySpark job MERGE Delta Lake & Great Expectations
-│   ├── silver_schema.py             # Định nghĩa schema Delta chuẩn cho 12 bảng
-│   ├── verify_silver.py             # Script kiểm tra tính toàn vẹn tầng Silver
-│   └── verify_gold.py               # Đối soát số liệu Gold với baseline Olist ban đầu
+├── spark_jobs/                      # Spark & Delta Lake processing (Silver & Quality)
+│   ├── silver_transform.py          # PySpark job for idempotent Delta MERGE & Great Expectations
+│   ├── silver_schema.py             # Target schema definitions for 12 Silver tables
+│   ├── verify_silver.py             # Integrity validation suite for Silver Delta tables
+│   └── verify_gold.py               # Reconciliation script verifying Gold against Olist baseline
 │
-├── dbt_project/                     # Chuyển đổi dữ liệu Star Schema & Marts (Gold)
-│   ├── dbt_project.yml              # Cấu hình dự án dbt
+├── dbt_project/                     # dbt Core dimensional modeling (Gold & Marts)
+│   ├── dbt_project.yml              # dbt project definition
 │   ├── models/
-│   │   ├── staging/                 # 12 staging views ánh xạ từ Silver
-│   │   ├── intermediate/            # Làm giàu dữ liệu trung gian
+│   │   ├── staging/                 # 12 pass-through staging views
+│   │   ├── intermediate/            # Enriched intermediate transformations
 │   │   └── marts/                   # 7 Conformed Dimensions + 7 Facts + 6 Business Marts
-│   └── snapshots/                   # SCD Type 2 tracking customers & products
+│   └── snapshots/                   # SCD Type 2 tracking customer & product history
 │
-├── orchestration/                   # Tiện ích điều phối & kiểm toán vận hành
-│   ├── ops_runs.py                  # Ghi nhận trạng thái và metrics vào ops_pipeline_runs
-│   ├── athena_publish.py            # Tự động đăng ký bảng Delta lên Athena/Glue
-│   └── package_glue_job.py          # Đóng gói mã nguồn đẩy lên AWS Glue
+├── orchestration/                   # Operational utilities & DataOps
+│   ├── ops_runs.py                  # Writes execution metadata to ops_pipeline_runs
+│   ├── athena_publish.py            # Registers Delta tables and views in AWS Glue / Athena
+│   └── package_glue_job.py          # Packages Python code for AWS Glue ETL deployment
 │
-├── powerbi/                         # Dự án Power BI Project (.pbip)
-│   ├── EcommerceCDC.pbip            # File dự án Power BI Desktop
-│   ├── EcommerceCDC.Report/         # Định nghĩa giao diện 5 trang báo cáo
-│   └── EcommerceCDC.SemanticModel/  # Mô hình ngữ nghĩa, 7 bảng Import và 26 DAX measures
+├── powerbi/                         # Microsoft Power BI Project (.pbip)
+│   ├── EcommerceCDC.pbip            # Power BI Desktop project file
+│   ├── EcommerceCDC.Report/         # Visual definition for 5 report pages
+│   └── EcommerceCDC.SemanticModel/  # Semantic model, 7 Import partitions & 26 DAX measures
 │
-├── docs/                            # Tài liệu kiến trúc, ADR và kế hoạch kỹ thuật
-│   ├── baselines/                   # Kết quả đối soát số liệu gốc (99.441 orders)
-│   ├── decisions/                   # Các Architecture Decision Records (ADRs)
-│   ├── images/                      # Sơ đồ kiến trúc SVG và lineage dbt PNG
-│   └── runbooks/                    # Hướng dẫn cutover và vận hành
+├── docs/                            # Architectural specifications, ADRs & runbooks
+│   ├── baselines/                   # Frozen baseline audit results (99,441 orders)
+│   ├── decisions/                   # Architectural Decision Records (ADRs 0001 - 0004)
+│   ├── images/                      # SVG architecture diagrams & dbt lineage screenshots
+│   └── runbooks/                    # Cutover runbooks and operational procedures
 │
-└── tests/                           # Bộ kiểm thử tự động (Unit, Integration & E2E)
+└── tests/                           # Automated test suite (85+ Unit, Integration & E2E tests)
 ```
 
 ---
 
-## 7. Hướng dẫn Cài đặt & Chạy thử (Getting Started)
+## 9. Quickstart & Local Reproduction Guide
 
-### Yêu cầu Môi trường
-- **Hệ điều hành**: Windows 10/11 (PowerShell), macOS, hoặc Linux.
-- **Docker Desktop**: Đã kích hoạt Compose v2 (cấp tối thiểu 4GB RAM cho Airflow).
-- **Python**: Phiên bản 3.13 kết hợp với trình quản lý gói [uv](https://docs.astral.sh/uv/).
+### Prerequisites
+- **Operating System**: Windows 10/11 (PowerShell), macOS, or Linux.
+- **Docker Desktop**: With Docker Compose v2 enabled (allocate at least 4 GB RAM for Airflow).
+- **Python**: Version 3.13 installed with the [uv](https://docs.astral.sh/uv/) package manager.
 
-### Bước 1: Khởi động Local Stack & Cài đặt Thư viện
+### Step 1: Local Stack Initialization & Python Tooling
 
-Trên Windows PowerShell:
+On Windows PowerShell:
 ```powershell
-# 1. Tạo file cấu hình môi trường
+# 1. Initialize environment settings
 Copy-Item .env.example .env
+# Edit .env and set your private local POSTGRES_PASSWORD
 
-# 2. Khởi động PostgreSQL 18 và Apache Airflow
+# 2. Start PostgreSQL 18 and Apache Airflow
 docker compose up -d
 
-# 3. Đồng bộ toàn bộ thư viện Python thông qua uv
+# 3. Synchronize Python virtual environment via uv
 uv sync --frozen
 ```
 
-Kiểm tra trạng thái các container:
+Verify service health:
 ```powershell
 docker compose ps
 docker compose exec postgres sh -c 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc "SHOW wal_level"'
 ```
-
-Giao diện Airflow sẽ chạy tại [http://localhost:8080](http://localhost:8080). Để lấy mật khẩu tài khoản `admin`:
+The query output should return `logical`. Airflow runs at [http://localhost:8080](http://localhost:8080). To obtain the generated `admin` password:
 ```powershell
 docker compose exec airflow cat /opt/airflow/simple_auth_manager_passwords.json.generated
 ```
 
-### Bước 2: Nạp Dữ liệu Olist & Tạo Baseline
+### Step 2: Seed Olist Dataset & Establish Audit Baseline
 
-Áp dụng migration Alembic và nạp 9 file CSV từ dataset Olist vào PostgreSQL:
+Run database migrations and load the Olist dataset:
 ```powershell
-# Kiểm tra migration hiện tại
+# Apply Alembic schema migrations
 uv run alembic -c sources/oltp/alembic.ini upgrade head
 
-# Nạp dữ liệu Olist bằng lệnh COPY siêu tốc
+# Load 9 Olist CSV files using high-speed COPY
 uv run python -m sources.oltp.load_olist --dataset olist_dataset
 ```
 
-Tạo bản chụp baseline độc lập để làm thước đo đối soát cho các tầng sau:
+Capture the immutable baseline report to verify against downstream stages:
 ```powershell
 uv run python -m sources.oltp.capture_baseline --load-report logs/olist_load/<run-id>/report.json --dataset olist_dataset
 ```
 
-*(Tùy chọn) Mô phỏng phát sinh đơn hàng ngày mới để kiểm tra tính năng CDC:*
+*(Optional) Test CDC event detection by running the daily transaction simulator:*
 ```powershell
 uv run python -m sources.oltp.simulate_new_day --orders 100 --seed 42
 ```
 
-### Bước 3: Trích xuất CDC lên S3 Bronze
+### Step 3: Ingest CDC to Amazon S3 Bronze
 
-Chạy extractor trích xuất dữ liệu từ PostgreSQL lên Amazon S3 kèm tính toán overlap fingerprint:
+Extract PostgreSQL tables into Parquet chunks with committed manifests:
 ```powershell
-# Trích xuất thử nghiệm 1 bảng
+# Extract a single table test
 uv run python -m ingestion.cdc_extract --table orders
 
-# Trích xuất toàn bộ 9 bảng OLTP
+# Extract all 9 OLTP tables
 uv run python -m ingestion.cdc_extract
 
-# Thu thập tỷ giá ngoại tệ và dữ liệu clickstream
+# Collect external exchange rates and clickstream logs
 uv run python -m ingestion.ingest_api --source exchange_rate
 uv run python -m orchestration.ingest_demo_clickstream
 ```
 
-### Bước 4: Chạy Spark Transformation & Quality Gate (Silver)
+### Step 4: Execute Spark Silver Transformation & Quality Gate
 
-Thực thi biến đổi Silver, khử trùng lặp và kích hoạt chốt chặn Great Expectations:
+Run the PySpark transformation with Delta Lake and Great Expectations inside a reproducible Docker Linux container:
 ```powershell
-# Chạy PySpark job cục bộ thông qua Docker Linux
+# Build local Silver container
 docker build -f docker/silver.Dockerfile -t ecommerce-silver-local .
+
+# Execute Silver transformation
 docker run --rm --mount "type=bind,source=$((Get-Location).Path),target=/workspace" ecommerce-silver-local uv run --frozen python -m spark_jobs.silver_transform --bronze-root /workspace/logs/local_bronze --silver-root /workspace/logs/local_silver
 
-# Xác nhận tính toàn vẹn tầng Silver
+# Verify Silver data integrity
 docker run --rm --mount "type=bind,source=$((Get-Location).Path),target=/workspace" ecommerce-silver-local uv run --frozen python -m spark_jobs.verify_silver --silver-root /workspace/logs/local_silver
 ```
 
-### Bước 5: Xây dựng Star Schema & Marts với dbt (Gold)
+### Step 5: Build Gold Star Schema & Marts with dbt
 
-Biên dịch và chạy 122 model, snapshot và tests của dbt:
+Compile and execute 122 dbt models, snapshots, and tests:
 ```powershell
 uv run dbt build --project-dir dbt_project --profiles-dir dbt_project
 ```
 
-Tất cả 122 nodes (models + tests + snapshots) sẽ hoàn thành với 0 lỗi:
+All 122 nodes will pass with 0 errors:
 ```text
 Completed successfully
 Done. PASS=122 WARN=0 ERROR=0 SKIP=0 TOTAL=122
 ```
 
-Kiểm tra đối soát số liệu tầng Gold với baseline ban đầu:
+Verify Gold table metrics against the frozen baseline:
 ```powershell
 docker run --rm --mount "type=bind,source=$((Get-Location).Path),target=/workspace" ecommerce-silver-local uv run --frozen python -m spark_jobs.verify_gold --silver-root /workspace/logs/local_silver --project-dir /workspace/dbt_project --baseline /workspace/docs/baselines/olist_20261023T032906Z_99dc95d7.json --business
 ```
 
-### Bước 6: Vận hành Tự động với Apache Airflow
+### Step 6: Orchestrate Pipeline with Apache Airflow
 
-Sau khi cấu hình thông tin AWS (S3 Bucket, Glue Role, Athena Workgroup) trong `.env`:
-1. Mở Airflow UI tại `http://localhost:8080`.
-2. Bật DAG `ecommerce_cdc_daily`.
-3. Kích hoạt chạy thử một lượt (Trigger DAG). Toàn bộ chuỗi tác vụ từ Preflight → Trích xuất Bronze → AWS Glue Job → dbt build → Athena publish sẽ được thực thi hoàn toàn tự động.
+Configure your AWS credentials and S3 bucket in `.env`, then:
+1. Open the Airflow web interface at `http://localhost:8080`.
+2. Unpause the `ecommerce_cdc_daily` DAG.
+3. Trigger a manual run. The pipeline will automatically execute: Preflight Check → Parallel Bronze Extraction → AWS Glue 6.0 PySpark Job → dbt build → Athena Registration → Audit Log Commit.
 
-### Bước 7: Kết nối & Làm mới Báo cáo Power BI
-1. Mở file `powerbi/EcommerceCDC.pbip` bằng **Power BI Desktop**.
-2. Thiết lập cấu hình Amazon Athena ODBC DSN trên máy tính trỏ tới vùng AWS (`ap-southeast-1`) và S3 output.
-3. Nhấn **Refresh** trên giao diện Power BI để tải mới toàn bộ số liệu 7 bảng Import từ Amazon Athena.
+### Step 7: Connect & Refresh Power BI Dashboard
+1. Open `powerbi/EcommerceCDC.pbip` in **Power BI Desktop**.
+2. Configure the Amazon Athena ODBC DSN to match your AWS Region (`ap-southeast-1`) and S3 query output location.
+3. Click **Refresh** to load all 7 Import tables directly from the Athena Lakehouse views.
 
 ---
 
-## 8. Kiểm chứng Dữ liệu & Đối soát Số liệu (Data Reconciliation)
+## 10. Data Reconciliation & Audit Verification
 
-Để chứng minh tính **toàn vẹn dữ liệu (Zero Data Drift)** qua toàn bộ các tầng xử lý phức tạp, hệ thống đã chạy quy trình đối soát tự động giữa cơ sở dữ liệu nguồn PostgreSQL và kết quả cuối cùng tại tầng Gold:
+To demonstrate **Zero Data Drift** across all stages, an automated reconciliation check verifies key figures across PostgreSQL, S3 Bronze, Delta Silver, and dbt Gold:
 
-| Chỉ số Đối soát (Metric) | Nguồn PostgreSQL (Baseline) | Tầng Silver (Delta Lake) | Tầng Gold (dbt Marts) | Trạng thái Đối soát |
+| Audit Metric | Source Baseline (PostgreSQL) | Silver Layer (Delta Lake) | Gold Layer (dbt Marts) | Reconciliation Status |
 |---|---|---|---|:---:|
-| **Tổng số lượng Đơn hàng (Total Orders)** | `99.441` | `99.441` | `99.441` | ✅ Khớp 100% |
-| **Tổng số mặt hàng đã bán (Order Items)** | `112.650` | `112.650` | `112.650` | ✅ Khớp 100% |
-| **Tổng doanh thu hàng hóa (Item Price GMV)** | `13.591.643,70 BRL` | `13.591.643,70 BRL` | `13.591.643,70 BRL` | ✅ Khớp từng Cent |
-| **Doanh thu đơn giao thành công (Delivered GMV)** | `13.221.498,11 BRL` | `13.221.498,11 BRL` | `13.221.498,11 BRL` | ✅ Khớp từng Cent |
-| **Số tháng phân tích giao dịch** | `24 tháng` | `24 tháng` | `24 tháng` | ✅ Khớp 100% |
-| **Dữ liệu mồ côi / Khóa ngoại sai (Orphan FKs)** | `0` | `0` (Đã cách ly quarantine) | `0` | ✅ Hoàn hảo |
-| **dbt Tests (Data Integrity & Business Rules)** | — | — | `85/85 Passed` | ✅ 0 Lỗi |
+| **Total Order Count** | `99,441` | `99,441` | `99,441` | ✅ 100% Match |
+| **Total Order Items Sold** | `112,650` | `112,650` | `112,650` | ✅ 100% Match |
+| **Total Gross Merchandise Value (GMV)** | `BRL 13,591,643.70` | `BRL 13,591,643.70` | `BRL 13,591,643.70` | ✅ Exact Cent Match |
+| **Delivered Order Item Revenue** | `BRL 13,221,498.11` | `BRL 13,221,498.11` | `BRL 13,221,498.11` | ✅ Exact Cent Match |
+| **Purchase Date Monthly Cohorts** | `24 Months` | `24 Months` | `24 Months` | ✅ 100% Match |
+| **Orphan Foreign Keys / Malformed Rows** | `0` | `0` (Isolated to quarantine) | `0` | ✅ Zero Data Pollution |
+| **dbt Tests (Schema & Business Rules)** | — | — | `85/85 Passed` | ✅ Zero Failures |
 
 > [!NOTE]
-> Mọi thay đổi về mô hình kiến trúc, quyết định kỹ thuật và runbook vận hành đều được lưu trữ minh bạch tại thư mục [docs/](docs/).
+> All architectural decision records, historical migration logs, and production runbooks are documented under [`docs/`](docs/).

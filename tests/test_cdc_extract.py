@@ -314,5 +314,37 @@ class CdcExtractTest(unittest.TestCase):
         self.assert_batch(self.manifests()[2], 2)
 
 
+class PrimaryReplicaSettingsTest(unittest.TestCase):
+    def test_replica_defaults_to_primary_when_unset(self):
+        from sources.oltp.load_olist import replica_connection_settings
+        settings = {
+            "POSTGRES_HOST": "primary.db.internal",
+            "POSTGRES_PORT": "5432",
+            "POSTGRES_DB": "ecommerce",
+            "POSTGRES_USER": "app_user",
+            "POSTGRES_PASSWORD": "secret_password",
+            "POSTGRES_SSLMODE": "prefer",
+        }
+        opts = replica_connection_settings(settings)
+        self.assertEqual(opts["host"], "primary.db.internal")
+        self.assertEqual(opts["port"], 5432)
+
+    def test_replica_settings_override_host_and_port(self):
+        from sources.oltp.load_olist import replica_connection_settings
+        settings = {
+            "POSTGRES_HOST": "primary.db.internal",
+            "POSTGRES_PORT": "5432",
+            "POSTGRES_REPLICA_HOST": "replica.db.internal",
+            "POSTGRES_REPLICA_PORT": "5433",
+            "POSTGRES_DB": "ecommerce",
+            "POSTGRES_USER": "app_user",
+            "POSTGRES_PASSWORD": "secret_password",
+            "POSTGRES_SSLMODE": "prefer",
+        }
+        opts = replica_connection_settings(settings)
+        self.assertEqual(opts["host"], "replica.db.internal")
+        self.assertEqual(opts["port"], 5433)
+
+
 if __name__ == "__main__":
     unittest.main()

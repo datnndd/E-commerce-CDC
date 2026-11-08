@@ -1,0 +1,138 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 480" width="100%" height="100%" style="background:#0b1120; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <defs>
+    <linearGradient id="bgGrad2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b1120"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+
+    <linearGradient id="primaryBox" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1e3a8a"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+
+    <linearGradient id="replicaBox" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0369a1"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+
+    <linearGradient id="bronzeBox" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#d97706"/>
+      <stop offset="100%" stop-color="#92400e"/>
+    </linearGradient>
+
+    <filter id="shadow2" x="-5%" y="-5%" width="110%" height="115%" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="4" stdDeviation="5" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>
+
+    <marker id="arrBlue" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#60a5fa"/>
+    </marker>
+    <marker id="arrCyan" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#38bdf8"/>
+    </marker>
+    <marker id="arrAmber" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#f59e0b"/>
+    </marker>
+    <marker id="arrGreen" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 8 5 L 0 9 z" fill="#10b981"/>
+    </marker>
+  </defs>
+
+  <rect width="960" height="480" fill="url(#bgGrad2)"/>
+
+  <!-- Title -->
+  <text x="40" y="42" fill="#f8fafc" font-size="18" font-weight="700">POSTGRESQL PRIMARY-REPLICA CDC ISOLATION PATTERN</text>
+  <text x="40" y="64" fill="#94a3b8" font-size="12">Decoupling Transactional OLTP Workloads from Analytical Batch Extraction</text>
+
+  <!-- Node 1: E-Commerce App / Simulator -->
+  <g transform="translate(40, 110)">
+    <rect width="180" height="130" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1.5" filter="url(#shadow2)"/>
+    <text x="90" y="32" fill="#38bdf8" font-size="13" font-weight="700" text-anchor="middle">Storefront &amp; Simulator</text>
+    <text x="90" y="52" fill="#94a3b8" font-size="10" text-anchor="middle">Customer Checkouts</text>
+    <text x="90" y="68" fill="#94a3b8" font-size="10" text-anchor="middle">Order Updates &amp; Deletes</text>
+    <text x="90" y="84" fill="#94a3b8" font-size="10" text-anchor="middle">Payment Confirmations</text>
+    <rect x="25" y="100" width="130" height="20" rx="4" fill="#0f172a"/>
+    <text x="90" y="114" fill="#38bdf8" font-size="9" font-weight="600" text-anchor="middle">Write Transactions (ACID)</text>
+  </g>
+
+  <!-- Arrow: App -> Primary -->
+  <path d="M 220 175 L 275 175" stroke="#60a5fa" stroke-width="2.5" marker-end="url(#arrBlue)"/>
+  <text x="247" y="165" fill="#93c5fd" font-size="9" text-anchor="middle" font-weight="600">INSERT / UPDATE</text>
+
+  <!-- Node 2: PostgreSQL Primary -->
+  <g transform="translate(280, 95)">
+    <rect width="210" height="160" rx="10" fill="url(#primaryBox)" stroke="#3b82f6" stroke-width="1.8" filter="url(#shadow2)"/>
+    <rect x="12" y="10" width="60" height="20" rx="4" fill="#2563eb"/>
+    <text x="42" y="24" fill="#ffffff" font-size="10" font-weight="700" text-anchor="middle">PRIMARY</text>
+    <text x="80" y="25" fill="#f8fafc" font-size="13" font-weight="700">PostgreSQL OLTP</text>
+
+    <text x="14" y="55" fill="#cbd5e1" font-size="10.5">● Port: 5432 / AWS RDS Primary</text>
+    <text x="14" y="73" fill="#cbd5e1" font-size="10.5">● Handles 100% Write Traffic</text>
+    <text x="14" y="91" fill="#cbd5e1" font-size="10.5">● wal_level = logical</text>
+    <text x="14" y="109" fill="#cbd5e1" font-size="10.5">● cdc_watermark tracking</text>
+    <rect x="12" y="125" width="186" height="24" rx="4" fill="#172554"/>
+    <text x="105" y="141" fill="#93c5fd" font-size="9.5" font-weight="600" text-anchor="middle">🛡️ Zero Analytical Lock Contention</text>
+  </g>
+
+  <!-- Arrow: Primary -> Replica (WAL Streaming Replication) -->
+  <g transform="translate(385, 255)">
+    <path d="M 0 0 L 0 55" stroke="#60a5fa" stroke-width="2.5" stroke-dasharray="4,4" marker-end="url(#arrBlue)"/>
+    <rect x="-90" y="18" width="180" height="20" rx="4" fill="#0f172a" stroke="#3b82f6" stroke-width="1"/>
+    <text x="0" y="32" fill="#93c5fd" font-size="9" font-weight="600" text-anchor="middle">WAL Streaming Replication (&lt;1s Lag)</text>
+  </g>
+
+  <!-- Node 3: PostgreSQL Read Replica -->
+  <g transform="translate(280, 315)">
+    <rect width="210" height="135" rx="10" fill="url(#replicaBox)" stroke="#0284c7" stroke-width="1.8" filter="url(#shadow2)"/>
+    <rect x="12" y="10" width="60" height="20" rx="4" fill="#0284c7"/>
+    <text x="42" y="24" fill="#ffffff" font-size="10" font-weight="700" text-anchor="middle">REPLICA</text>
+    <text x="80" y="25" fill="#f8fafc" font-size="13" font-weight="700">Read Replica</text>
+
+    <text x="14" y="55" fill="#e0f2fe" font-size="10.5">● Port: 5433 / AWS RDS Replica</text>
+    <text x="14" y="73" fill="#bae6fd" font-size="10.5">● Read-Only Transaction Mode</text>
+    <text x="14" y="91" fill="#bae6fd" font-size="10.5">● Serves CDC Table Scans</text>
+    <rect x="12" y="103" width="186" height="22" rx="4" fill="#0c4a6e"/>
+    <text x="105" y="118" fill="#38bdf8" font-size="9.5" font-weight="600" text-anchor="middle">⚡ High-Volume Extraction Endpoint</text>
+  </g>
+
+  <!-- Arrow: Replica -> CDC Extractor -->
+  <path d="M 490 380 L 555 380" stroke="#38bdf8" stroke-width="2.5" marker-end="url(#arrCyan)"/>
+  <text x="522" y="370" fill="#7dd3fc" font-size="9" text-anchor="middle" font-weight="600">SELECT *</text>
+
+  <!-- Node 4: Python CDC Extractor Engine -->
+  <g transform="translate(560, 240)">
+    <rect width="190" height="180" rx="10" fill="#162238" stroke="#38bdf8" stroke-width="1.5" filter="url(#shadow2)"/>
+    <text x="95" y="28" fill="#38bdf8" font-size="13" font-weight="700" text-anchor="middle">Python CDC Engine</text>
+    <text x="12" y="52" fill="#cbd5e1" font-size="10">● Polls Read Replica</text>
+    <text x="12" y="70" fill="#cbd5e1" font-size="10">● 15-min Overlap Window</text>
+    <text x="12" y="88" fill="#cbd5e1" font-size="10">● Boundary Fingerprinting</text>
+    <text x="12" y="106" fill="#cbd5e1" font-size="10">● SHA-256 Checksums</text>
+    <text x="12" y="124" fill="#cbd5e1" font-size="10">● Manifest Generation</text>
+    <rect x="10" y="140" width="170" height="26" rx="4" fill="#0f172a" stroke="#059669" stroke-width="1"/>
+    <text x="95" y="157" fill="#34d399" font-size="9.5" font-weight="600" text-anchor="middle">Zero Data Loss &amp; Idempotent</text>
+  </g>
+
+  <!-- Arrow: CDC -> Primary (Watermark Update) -->
+  <path d="M 640 240 L 640 180 L 490 180" fill="none" stroke="#10b981" stroke-width="1.8" stroke-dasharray="3,3" marker-end="url(#arrGreen)"/>
+  <rect x="520" y="170" width="110" height="18" rx="4" fill="#0f172a" stroke="#10b981" stroke-width="0.8"/>
+  <text x="575" y="182" fill="#34d399" font-size="8.5" font-weight="600" text-anchor="middle">Commit Watermark</text>
+
+  <!-- Arrow: CDC -> S3 Bronze -->
+  <path d="M 750 330 L 805 330" stroke="#f59e0b" stroke-width="2.5" marker-end="url(#arrAmber)"/>
+  <text x="777" y="320" fill="#fbbf24" font-size="9" text-anchor="middle" font-weight="600">Parquet</text>
+
+  <!-- Node 5: S3 Bronze -->
+  <g transform="translate(810, 260)">
+    <rect width="120" height="140" rx="10" fill="url(#bronzeBox)" stroke="#b45309" stroke-width="1.5" filter="url(#shadow2)"/>
+    <text x="60" y="30" fill="#ffffff" font-size="12" font-weight="700" text-anchor="middle">Amazon S3</text>
+    <text x="60" y="48" fill="#fef3c7" font-size="11" font-weight="600" text-anchor="middle">Bronze Bucket</text>
+    <text x="10" y="76" fill="#fef3c7" font-size="9.5">● part-*.parquet</text>
+    <text x="10" y="94" fill="#fef3c7" font-size="9.5">● _manifest.json</text>
+    <text x="10" y="112" fill="#fef3c7" font-size="9.5">● Hash Verified</text>
+  </g>
+
+  <!-- Footer Notes -->
+  <g transform="translate(40, 440)">
+    <text x="0" y="18" fill="#64748b" font-size="11">Architecture Benefit: Isolates production checkout latency from heavy CDC queries, supports automatic RDS Multi-AZ failover, and scales analytical read throughput.</text>
+  </g>
+</svg>
