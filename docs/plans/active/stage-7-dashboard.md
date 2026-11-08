@@ -1,5 +1,8 @@
 # Execution Plan: Stage 7 Power BI dashboard and reconciliation
 
+The report design and pending reconciliation remain relevant. The Databricks
+refresh path below is superseded by [AWS Glue migration](aws-glue-migration.md).
+
 Date: 2026-11-02
 
 ## Status

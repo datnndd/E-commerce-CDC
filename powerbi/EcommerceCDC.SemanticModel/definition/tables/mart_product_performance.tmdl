@@ -1,0 +1,70 @@
+table mart_product_performance
+	lineageTag: 348f61cc-4a57-498b-8e03-aab9045b03d2
+
+	measure 'Product revenue' = SUM(mart_product_performance[delivered_item_revenue_brl])
+		formatString: #,##0.00
+		lineageTag: 750563c3-b87a-4cc7-88c9-6655acdc80cd
+
+	measure 'Items sold' = SUM(mart_product_performance[item_count])
+		formatString: #,##0
+		lineageTag: c55a66ba-9d44-4bca-8e01-1f2517ec0b42
+
+	column product_id
+		dataType: string
+		lineageTag: 420f7f87-a4b9-4ab6-8ced-099ce8ae9d54
+		sourceColumn: product_id
+
+	column seller_id
+		dataType: string
+		lineageTag: 4513974f-f050-430e-abeb-9fd1ba424408
+		sourceColumn: seller_id
+
+	column category_key
+		dataType: string
+		lineageTag: ae34e499-92b9-4ade-898b-b1e13f263558
+		sourceColumn: category_key
+
+	column category_name_english
+		dataType: string
+		lineageTag: 04971572-f356-4eb1-899c-bc510823bae8
+		sourceColumn: category_name_english
+
+	column seller_state
+		dataType: string
+		lineageTag: a732ce65-29eb-444e-94f8-f77050167e00
+		sourceColumn: seller_state
+
+	column item_count
+		dataType: int64
+		lineageTag: 126e7286-d175-499a-bde6-e90907d2044b
+		summarizeBy: none
+		sourceColumn: item_count
+
+	column order_count
+		dataType: int64
+		lineageTag: f8edf8bf-2c1a-4f01-a418-7d141404d19a
+		summarizeBy: none
+		sourceColumn: order_count
+
+	column delivered_item_revenue_brl
+		dataType: decimal
+		lineageTag: b3d34f4f-fe4e-4bb1-a06d-8ce1ae89f94f
+		summarizeBy: none
+		sourceColumn: delivered_item_revenue_brl
+
+	column delivered_freight_brl
+		dataType: decimal
+		lineageTag: 81b8a89c-6f6a-4a96-8fd0-357079e2feb6
+		summarizeBy: none
+		sourceColumn: delivered_freight_brl
+
+	column average_item_price_brl
+		dataType: decimal
+		lineageTag: b6e95bad-0913-4882-82eb-a14062307e6f
+		summarizeBy: none
+		sourceColumn: average_item_price_brl
+
+	partition mart_product_performance = m
+		mode: import
+		source = let Source = AmazonAthena.Databases(AthenaDSN, null, []), Catalog = Source{[Name="AwsDataCatalog",Kind="Database"]}[Data], Schema = Catalog{[Name=AthenaDatabase,Kind="Schema"]}[Data], Data = Schema{[Name="mart_product_performance",Kind="Table"]}[Data] in Data
+

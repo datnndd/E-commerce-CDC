@@ -9,5 +9,5 @@ USER airflow
 WORKDIR /opt/project
 RUN pip install --no-cache-dir uv==0.11.21
 RUN uv sync --frozen --no-dev
-RUN pip install --no-cache-dir apache-airflow-providers-databricks
+RUN pip install --no-cache-dir apache-airflow-providers-amazon
 WORKDIR /workspace

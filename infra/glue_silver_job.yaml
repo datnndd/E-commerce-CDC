@@ -1,0 +1,41 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: AWS Glue 5.0 Silver Delta job for the E-commerce CDC pipeline
+Parameters:
+  JobName:
+    Type: String
+  RoleArn:
+    Type: String
+  ScriptLocation:
+    Type: String
+  LibraryLocation:
+    Type: String
+  TempDir:
+    Type: String
+Resources:
+  SilverJob:
+    Type: AWS::Glue::Job
+    Properties:
+      Name: !Ref JobName
+      Role: !Ref RoleArn
+      GlueVersion: '5.0'
+      Command:
+        Name: glueetl
+        PythonVersion: '3'
+        ScriptLocation: !Ref ScriptLocation
+      DefaultArguments:
+        '--job-language': python
+        '--datalake-formats': delta
+        '--enable-glue-datacatalog': ''
+        '--conf': 'spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog --conf spark.delta.logStore.class=org.apache.spark.sql.delta.storage.S3SingleDriverLogStore'
+        '--additional-python-modules': great-expectations==1.24.1
+        '--extra-py-files': !Ref LibraryLocation
+        '--TempDir': !Ref TempDir
+      ExecutionProperty:
+        MaxConcurrentRuns: 1
+      MaxRetries: 0
+      Timeout: 120
+      WorkerType: G.1X
+      NumberOfWorkers: 2
+Outputs:
+  SilverJobName:
+    Value: !Ref SilverJob

@@ -2,7 +2,6 @@ version: 2
 
 sources:
   - name: silver
-    database: "{{ env_var('DBT_CATALOG') }}"
     schema: "{{ env_var('DBT_SILVER_SCHEMA', 'silver') }}"
     tables:
       - name: slv_customers

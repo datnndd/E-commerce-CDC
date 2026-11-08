@@ -1,0 +1,75 @@
+table mart_customer_rfm
+	lineageTag: 8dc3a53c-7d30-46db-a6d1-9550e47222a1
+
+	measure Customers = COUNTROWS(mart_customer_rfm)
+		formatString: #,##0
+		lineageTag: 6a4c5642-ff40-4f4c-910d-27d597eb0f55
+
+	measure 'Customer monetary' = SUM(mart_customer_rfm[monetary_brl])
+		formatString: #,##0.00
+		lineageTag: 7688295d-1500-4630-9b6d-47b1c5305a69
+
+	measure 'RFM as of' = MAX(mart_customer_rfm[as_of_date])
+		formatString: yyyy-mm-dd
+		lineageTag: c1518609-1b5b-4d40-b520-0066a31eddca
+
+	column customer_unique_id
+		dataType: string
+		lineageTag: f9f0a720-c6e4-4e2b-9e67-6f836d9233c2
+		sourceColumn: customer_unique_id
+
+	column as_of_date
+		dataType: dateTime
+		lineageTag: 57347ea6-2d08-4c28-87b3-fd3b2aee6590
+		sourceColumn: as_of_date
+
+	column last_purchase_date
+		dataType: dateTime
+		lineageTag: 69eb102a-d1e9-4f14-ac68-1e253647fc09
+		sourceColumn: last_purchase_date
+
+	column recency_days
+		dataType: int64
+		lineageTag: d9464ab5-d6d0-4b6b-952b-8c168cb2ee6d
+		summarizeBy: none
+		sourceColumn: recency_days
+
+	column frequency_orders
+		dataType: int64
+		lineageTag: d1b1c6a7-ba01-4677-9efa-81a4eb042e40
+		summarizeBy: none
+		sourceColumn: frequency_orders
+
+	column monetary_brl
+		dataType: decimal
+		lineageTag: 4f1320a6-fc09-48da-8202-9238f5ed2ffd
+		summarizeBy: none
+		sourceColumn: monetary_brl
+
+	column r_score
+		dataType: int64
+		lineageTag: 2b6506d6-83f5-41f9-ae83-6b0a20afa17f
+		summarizeBy: none
+		sourceColumn: r_score
+
+	column f_score
+		dataType: int64
+		lineageTag: 0381fcef-c07b-462d-8105-a49e82aa7989
+		summarizeBy: none
+		sourceColumn: f_score
+
+	column m_score
+		dataType: int64
+		lineageTag: 0716700d-10a1-45ba-88d1-2c3ddcc325c4
+		summarizeBy: none
+		sourceColumn: m_score
+
+	column segment
+		dataType: string
+		lineageTag: b58524cb-85c2-431a-bd26-2353e7bc3fb7
+		sourceColumn: segment
+
+	partition mart_customer_rfm = m
+		mode: import
+		source = let Source = AmazonAthena.Databases(AthenaDSN, null, []), Catalog = Source{[Name="AwsDataCatalog",Kind="Database"]}[Data], Schema = Catalog{[Name=AthenaDatabase,Kind="Schema"]}[Data], Data = Schema{[Name="mart_customer_rfm",Kind="Table"]}[Data] in Data
+

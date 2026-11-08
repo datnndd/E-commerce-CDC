@@ -4,7 +4,7 @@ Date: 2026-11-05
 
 ## Status
 
-Accepted
+Superseded by [0004](0004-aws-glue-pipeline.md) for the active execution path.
 
 ## Context
 

@@ -1,35 +1,53 @@
-"""Read committed Bronze runs and merge them into Delta Silver (local or Databricks)."""
+"""Read committed Bronze runs and merge them into Delta Silver (local or AWS Glue)."""
 
 import argparse
 from datetime import datetime, timezone
 import hashlib
 import json
+import logging
 import os
-import re
 from pathlib import Path
+import re
+import sys
+from urllib.parse import urlsplit
 
 import great_expectations as gx
-from delta import configure_spark_with_delta_pip
 from delta.tables import DeltaTable
 from pyspark.sql import DataFrame, SparkSession, Window, functions as F
 from pyspark.sql.types import StringType
 
 from spark_jobs.silver_schema import KEYS, OLTP_NAMES, SILVER_NAMES
 
+logger = logging.getLogger(__name__)
+
 
 def get_spark() -> SparkSession:
-    """Return active Databricks SparkSession, or configure a local standalone one."""
+    """Return active SparkSession, AWS Glue SparkSession, or configure a local standalone one."""
     active = SparkSession.getActiveSession()
     if active is not None:
         return active
-    if "DATABRICKS_RUNTIME_VERSION" in os.environ:
-        return SparkSession.builder.getOrCreate()
-    builder = (SparkSession.builder.master("local[2]").appName("ecommerce-silver")
-               .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
-               .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
-               .config("spark.sql.session.timeZone", "UTC")
-               .config("spark.ui.showConsoleProgress", "false")
-               .config("spark.sql.shuffle.partitions", "2"))
+
+    try:
+        from awsglue.context import GlueContext
+        from pyspark.context import SparkContext
+
+        sc = SparkContext.getOrCreate()
+        glue_context = GlueContext(sc)
+        return glue_context.spark_session
+    except ImportError:
+        pass
+
+    builder = (
+        SparkSession.builder.master("local[2]")
+        .appName("ecommerce-silver")
+        .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
+        .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
+        .config("spark.sql.session.timeZone", "UTC")
+        .config("spark.ui.showConsoleProgress", "false")
+        .config("spark.sql.shuffle.partitions", "2")
+    )
+    from delta import configure_spark_with_delta_pip
+
     return configure_spark_with_delta_pip(builder).getOrCreate()
 
 
@@ -332,34 +350,254 @@ def verify_silver_quality(spark: SparkSession, silver_root: str) -> None:
     print(f"All Silver tables verified: unique keys, valid joins, Quality Gate passed. Quarantine rows: {quarantine_count}")
 
 
-def register_unity_catalog(spark: SparkSession, silver_root: str, catalog: str, schema: str) -> None:
-    for value in (catalog, schema):
-        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", value):
-            raise ValueError(f"Unsafe Unity Catalog identifier: {value!r}")
-    root_str = str(silver_root).rstrip("/")
-    spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{catalog}`.`{schema}`")
-    for name in list(SILVER_NAMES.values()) + ["silver_quarantine"]:
-        location = f"{root_str}/{name}/"
-        spark.sql(f"CREATE TABLE IF NOT EXISTS `{catalog}`.`{schema}`.`{name}` USING DELTA LOCATION '{location}'")
-        spark.sql(f"ALTER TABLE `{catalog}`.`{schema}`.`{name}` SET LOCATION '{location}'")
-        print(f"Registered Unity Catalog table `{catalog}`.`{schema}`.`{name}` at {location}")
+def register_glue_catalog(spark: SparkSession, silver_root: str, database: str) -> None:
+    """Expose only quality-gated Delta tables, without repointing existing tables."""
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", database):
+        raise ValueError(f"Unsafe Glue database identifier: {database!r}")
+    root = silver_root.rstrip("/")
+    if not re.fullmatch(r"s3a?://[A-Za-z0-9.-]+(?:/[A-Za-z0-9._/-]+)?", root):
+        raise ValueError(f"Unsafe Silver S3 location: {silver_root!r}")
+    spark.sql(f"CREATE DATABASE IF NOT EXISTS `{database}`")
+    for name in [*SILVER_NAMES.values(), "silver_quarantine"]:
+        path = f"{root}/{name}"
+        relation = f"`{database}`.`{name}`"
+        if spark.catalog.tableExists(f"{database}.{name}"):
+            actual = spark.sql(f"DESCRIBE DETAIL {relation}").select("location").first().location
+            if actual.rstrip("/").replace("s3a://", "s3://") != path.replace("s3a://", "s3://"):
+                raise ValueError(f"{relation} already points to {actual}, expected {path}")
+        else:
+            spark.sql(f"CREATE TABLE {relation} USING DELTA LOCATION '{path}'")
+
+
+def write_silver_metrics(spark: SparkSession, silver_root: str, bronze_root: str, run_id: str) -> None:
+    """Write measured post-merge counts for the matching Airflow run."""
+    import boto3
+
+    from spark_jobs.ops_key import silver_metrics_key
+
+    parsed = urlsplit(bronze_root)
+    if parsed.scheme not in {"s3", "s3a"} or not parsed.netloc:
+        raise ValueError("Bronze root must be an S3 URI for Glue metrics")
+    counts = {
+        name: spark.read.format("delta").load(f"{silver_root.rstrip('/')}/{name}").count()
+        for name in SILVER_NAMES.values()
+    }
+    quarantine = spark.read.format("delta").load(f"{silver_root.rstrip('/')}/silver_quarantine").count()
+    key = silver_metrics_key(parsed.path.strip("/"), run_id)
+    boto3.client("s3").put_object(
+        Bucket=parsed.netloc,
+        Key=key,
+        Body=json.dumps({"run_id": run_id, "silver_counts": counts, "quarantine_rows": quarantine}).encode("utf-8"),
+        ContentType="application/json",
+    )
+
+
+def validate_execution_date(date_str: str | None) -> str | None:
+    """Validate ISO-8601 date (YYYY-MM-DD) or ISO timestamp."""
+    if not date_str:
+        return None
+    cleaned = str(date_str).strip()
+    try:
+        iso_clean = cleaned.replace("Z", "+00:00")
+        datetime.fromisoformat(iso_clean)
+        return cleaned
+    except Exception:
+        raise ValueError(
+            f"Invalid execution-date: {date_str!r}. Must be ISO-8601 format (e.g. YYYY-MM-DD or YYYY-MM-DDTHH:MM:SSZ)."
+        )
+
+
+GLUE_OPTION_SPEC: list[tuple[str, bool, str | None]] = [
+    ("JOB_NAME", True, None),
+    ("bronze_root", True, None),
+    ("silver_root", True, None),
+    ("dataset", False, None),
+    ("glue_database", True, None),
+    ("pipeline_run_id", True, None),
+]
+
+
+def is_glue_runtime(argv: list[str]) -> bool:
+    """Return True if executing in an AWS Glue runtime environment."""
+    has_glue = "awsglue" in sys.modules or "awsglue.utils" in sys.modules
+    if not has_glue:
+        try:
+            import awsglue.utils  # noqa: F401
+            has_glue = True
+        except ImportError:
+            has_glue = False
+    if not has_glue:
+        return False
+    all_args = list(argv) + list(sys.argv)
+    return any(a == "--JOB_NAME" or a.startswith("--JOB_NAME=") for a in all_args)
+
+
+def parse_glue_args(argv: list[str], resolve_fn=None) -> argparse.Namespace:
+    """Safely parse AWS Glue arguments without crashing on missing optional options."""
+    fn = resolve_fn
+    if fn is None:
+        if "awsglue.utils" in sys.modules and hasattr(sys.modules["awsglue.utils"], "getResolvedOptions"):
+            fn = sys.modules["awsglue.utils"].getResolvedOptions
+        else:
+            try:
+                from awsglue.utils import getResolvedOptions as gro
+                fn = gro
+            except ImportError:
+                pass
+    if fn is None:
+        raise RuntimeError("AWS Glue getResolvedOptions is not available in this environment")
+
+    raw_argv = list(argv)
+    if raw_argv and raw_argv[0].startswith("--"):
+        glue_argv = [sys.argv[0] if sys.argv and sys.argv[0] else "job.py"] + raw_argv
+    elif not raw_argv:
+        glue_argv = [sys.argv[0] if sys.argv and sys.argv[0] else "job.py"]
+    else:
+        glue_argv = raw_argv
+
+    passed_flags = set()
+    for arg in glue_argv:
+        if arg.startswith("--"):
+            flag = arg[2:].split("=", 1)[0]
+            passed_flags.add(flag)
+
+    options_to_resolve: list[str] = []
+    defaults: dict[str, str | None] = {}
+
+    for name, required, default_val in GLUE_OPTION_SPEC:
+        norm_key = name.lower().replace("-", "_")
+        defaults[norm_key] = default_val
+
+        if name in passed_flags or required:
+            options_to_resolve.append(name)
+
+    unsupported = passed_flags & {"bronze-root", "silver-root", "glue-database", "pipeline-run-id"}
+    if unsupported:
+        raise ValueError(f"Glue arguments require underscores: {sorted(unsupported)}")
+
+    raw_resolved = fn(glue_argv, options_to_resolve)
+
+    resolved: dict[str, str | None] = dict(defaults)
+    for k, v in raw_resolved.items():
+        norm_key = k.lower().replace("-", "_")
+        resolved[norm_key] = v
+
+    # Normalize dataset
+    dataset_raw = resolved.get("dataset")
+    if dataset_raw:
+        if isinstance(dataset_raw, str):
+            datasets = [d.strip() for d in dataset_raw.split(",") if d.strip()]
+        else:
+            datasets = list(dataset_raw)
+        for d in datasets:
+            if d not in SILVER_NAMES:
+                raise ValueError(f"Invalid dataset: {d!r}. Must be one of: {', '.join(SILVER_NAMES)}")
+        resolved["dataset"] = datasets
+    else:
+        resolved["dataset"] = None
+
+    if resolved["dataset"]:
+        raise ValueError("Glue jobs must process all datasets before catalog registration")
+
+    # Validate database identifier if provided
+    glue_db = resolved.get("glue_database")
+    if glue_db:
+        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,254}", glue_db):
+            raise ValueError(f"Invalid glue-database identifier: {glue_db!r}")
+
+    if not resolved.get("pipeline_run_id"):
+        raise ValueError("Glue jobs require --pipeline_run_id")
+
+    # Validate S3 path contracts for non-empty paths in Glue mode
+    for path_key in ("bronze_root", "silver_root"):
+        val = resolved.get(path_key)
+        if val and str(val).strip():
+            stripped = str(val).strip()
+            parsed = urlsplit(stripped)
+            if parsed.scheme not in {"s3", "s3a"} or not parsed.netloc or parsed.query or parsed.fragment:
+                raise ValueError(
+                    f"Invalid S3 path for {path_key.replace('_', '-')}: {val!r}. "
+                    "AWS Glue runtime requires valid S3 URIs (s3://bucket/... or s3a://bucket/...)"
+                )
+
+    return argparse.Namespace(**resolved)
+
+
+def parse_cli_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse command line arguments locally or in unit tests using argparse."""
+    parser = argparse.ArgumentParser(description="AWS Glue / Local Silver Delta Transformation")
+    parser.add_argument("--JOB_NAME", "--job-name", dest="job_name", default=None,
+                        help="AWS Glue job name (injected by Glue or optional locally)")
+    parser.add_argument("--bronze_root", "--bronze-root", required=True, dest="bronze_root",
+                        help="Bronze root (local directory path or s3:// URI)")
+    parser.add_argument("--silver_root", "--silver-root", required=True, dest="silver_root",
+                        help="Silver Delta root (local directory path or s3:// URI)")
+    parser.add_argument("--dataset", action="append", default=None,
+                        help="Process one or more datasets (repeat flag or comma-separated); omit for all")
+    parser.add_argument("--glue_database", "--glue-database", dest="glue_database", default=None,
+                        help="AWS Glue Data Catalog database name for Silver tables")
+    parser.add_argument("--pipeline_run_id", "--pipeline-run-id", dest="pipeline_run_id", default=None)
+    parser.add_argument("--execution-date", "--execution_date", dest="execution_date", default=None,
+                        help="Pipeline execution date partition or watermark (YYYY-MM-DD or ISO timestamp)")
+
+    args = parser.parse_args(argv)
+
+    if args.dataset:
+        normalized: list[str] = []
+        for item in args.dataset:
+            for sub in item.split(","):
+                sub = sub.strip()
+                if sub:
+                    if sub not in SILVER_NAMES:
+                        parser.error(f"Invalid dataset: {sub!r}. Must be one of: {', '.join(SILVER_NAMES)}")
+                    normalized.append(sub)
+        args.dataset = normalized
+
+    if args.dataset and args.glue_database:
+        parser.error("--dataset cannot be combined with --glue_database; register only after the full quality gate")
+
+    if args.glue_database:
+        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,254}", args.glue_database):
+            parser.error(f"Invalid glue-database identifier: {args.glue_database!r}")
+
+    if args.execution_date:
+        try:
+            validate_execution_date(args.execution_date)
+        except ValueError as exc:
+            parser.error(str(exc))
+
+    return args
+
+
+def parse_args(argv: list[str] | None = None, force_mode: str | None = None, resolve_fn=None) -> argparse.Namespace:
+    """Unified entrypoint parameter resolver supporting both AWS Glue and argparse."""
+    effective_argv = sys.argv[1:] if argv is None else list(argv)
+    if force_mode == "glue" or (force_mode != "local" and is_glue_runtime(effective_argv)):
+        return parse_glue_args(effective_argv, resolve_fn=resolve_fn)
+    return parse_cli_args(effective_argv)
+
+
+parse_arguments = parse_args
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--bronze-root", required=True, help="Bronze root (local directory path or s3:// URI)")
-    parser.add_argument("--silver-root", required=True, help="Silver Delta root (local directory path or s3:// URI)")
-    parser.add_argument("--dataset", action="append", choices=SILVER_NAMES, help="Process one dataset; repeat or omit for all")
-    parser.add_argument("--catalog", help="Databricks Unity Catalog to register tables into")
-    parser.add_argument("--schema", default="silver", help="Databricks schema for Silver tables")
-    args = parser.parse_args()
-    if args.dataset and args.catalog:
-        parser.error("--dataset cannot be combined with --catalog; register only after the full quality gate")
+    args = parse_args()
 
     spark = get_spark()
-    is_standalone_local = not is_s3_uri(args.silver_root) and "DATABRICKS_RUNTIME_VERSION" not in os.environ
+    glue_job = None
+
+    if "awsglue" in sys.modules and getattr(args, "job_name", None):
+        from awsglue.context import GlueContext
+        from awsglue.job import Job
+        from pyspark.context import SparkContext
+
+        glue_context = GlueContext(SparkContext.getOrCreate())
+        glue_job = Job(glue_context)
+        glue_job.init(args.job_name, vars(args))
+
+    is_standalone_local = not is_s3_uri(args.silver_root) and "awsglue" not in sys.modules
     try:
-        datasets = args.dataset or SILVER_NAMES
+        datasets = args.dataset or list(SILVER_NAMES.keys())
         for dataset in datasets:
             valid, quarantined = run_dataset(spark, args.bronze_root, args.silver_root, dataset)
             print(f"{dataset}: {valid} latest valid rows, {quarantined} quarantined")
@@ -367,8 +605,15 @@ def main() -> None:
         if not args.dataset:
             verify_silver_quality(spark, args.silver_root)
 
-        if args.catalog:
-            register_unity_catalog(spark, args.silver_root, args.catalog, args.schema)
+        if args.glue_database:
+            if args.dataset:
+                raise ValueError("Cannot register a partial Silver run")
+            register_glue_catalog(spark, args.silver_root, args.glue_database)
+        if args.pipeline_run_id:
+            write_silver_metrics(spark, args.silver_root, args.bronze_root, args.pipeline_run_id)
+
+        if glue_job is not None:
+            glue_job.commit()
     finally:
         if is_standalone_local:
             spark.stop()

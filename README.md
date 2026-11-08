@@ -1,6 +1,6 @@
 # E-commerce CDC Lakehouse
 
-Portfolio project in progress. The target pipeline is PostgreSQL OLTP → S3 Bronze → Databricks Delta Silver/Gold with dbt-databricks → Power BI, orchestrated by Airflow. Docker Compose configures PostgreSQL 18.6 and Airflow 3.3.2 for local development. Olist loading, the isolated OLTP simulator, Bronze extraction, local Silver, and local Gold/business-mart SQL proof are implemented. The verified local Silver snapshot has been published to Databricks, where Gold and six business marts passed two full dbt builds and source reconciliation. An isolated Stage 1C source-change run passed through the earlier Airflow **local Silver** path and Gold; the owner accepted Stage 6 closure. The new Databricks Spark Silver Job path, repeatability under the same logical date, and unattended scheduling remain unverified. See [PLAN.md](PLAN.md).
+Portfolio project in progress. The active target is PostgreSQL OLTP → S3 Bronze → AWS Glue 5.0 Delta Silver → dbt-glue Gold/marts → Athena engine v3 → Power BI Import, orchestrated by Airflow. The AWS migration is implemented locally but has not passed a live isolated AWS run or Power BI refresh; the main DAG remains paused. Previous local and Databricks validation is historical evidence for those paths only. See [AWS migration plan](docs/plans/active/aws-glue-migration.md) and [cutover runbook](docs/runbooks/aws-glue-cutover.md).
 
 ## Stage 0: local setup
 

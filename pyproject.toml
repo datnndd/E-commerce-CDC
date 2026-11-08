@@ -6,7 +6,8 @@ requires-python = ">=3.13,<3.14"
 dependencies = [
     "alembic>=1.17,<2",
     "boto3>=1.40,<2",
-    "dbt-databricks>=1.10,<1.12",
+    "botocore[crt]>=1.43,<2",
+    "dbt-glue>=1.8,<1.11",
     "delta-spark>=4.3,<4.4",
     "faker>=37,<39",
     "great-expectations[spark]>=1.19,<2",

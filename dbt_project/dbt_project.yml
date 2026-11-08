@@ -1,7 +1,7 @@
 name: ecommerce_cdc
 version: '1.0.0'
 config-version: 2
-profile: ecommerce_databricks
+profile: ecommerce_aws
 
 model-paths: ["models"]
 snapshot-paths: ["snapshots"]

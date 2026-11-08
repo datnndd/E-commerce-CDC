@@ -1,0 +1,112 @@
+table ops_pipeline_runs
+	lineageTag: 535763d8-52da-45a1-a391-af14a8c16572
+
+	measure 'Bronze rows' = SUM(ops_pipeline_runs[bronze_rows])
+		formatString: #,##0
+		lineageTag: 105b0f3f-1716-486c-8cad-1f59cb075f1e
+
+	measure 'Silver rows' = SUM(ops_pipeline_runs[silver_rows])
+		formatString: #,##0
+		lineageTag: ec0d6613-b841-438e-a091-99cda33d3d3e
+
+	measure 'Gold rows' = SUM(ops_pipeline_runs[gold_rows])
+		formatString: #,##0
+		lineageTag: 86518284-1c62-4c12-a350-d56a982d1ae0
+
+	measure 'Mart rows' = SUM(ops_pipeline_runs[mart_rows])
+		formatString: #,##0
+		lineageTag: 4037c271-9501-4f4d-9965-58391a987596
+
+	measure 'Quarantine rows' = SUM(ops_pipeline_runs[quarantine_rows])
+		formatString: #,##0
+		lineageTag: 399c1717-a863-4450-b640-bba12fd9b1ec
+
+	column dag_id
+		dataType: string
+		lineageTag: 322478c5-74b3-4f84-986e-17cb9ca69fc8
+		sourceColumn: dag_id
+
+	column run_id
+		dataType: string
+		lineageTag: 3977c485-f5f6-4268-a048-6b44fa0eb764
+		sourceColumn: run_id
+
+	column namespace
+		dataType: string
+		lineageTag: 9a40e593-1982-4081-a590-c96203c847ba
+		sourceColumn: namespace
+
+	column started_at
+		dataType: dateTime
+		lineageTag: d3ab2b23-dce7-4a4f-b1fb-4c878d98fc45
+		sourceColumn: started_at
+
+	column finished_at
+		dataType: dateTime
+		lineageTag: 257eebc2-f8ef-40fd-a605-525daafac54c
+		sourceColumn: finished_at
+
+	column status
+		dataType: string
+		lineageTag: 769c2f79-de82-4d3a-b185-15801e4911a9
+		sourceColumn: status
+
+	column failed_task
+		dataType: string
+		lineageTag: 4d623557-652a-4658-bd87-5d80198f1a10
+		sourceColumn: failed_task
+
+	column bronze_rows
+		dataType: int64
+		lineageTag: afd5d5de-a075-4161-934b-b6541c827f73
+		summarizeBy: none
+		sourceColumn: bronze_rows
+
+	column silver_rows
+		dataType: int64
+		lineageTag: 7f9f00f2-d016-4936-96cd-40b5a6001d7c
+		summarizeBy: none
+		sourceColumn: silver_rows
+
+	column gold_rows
+		dataType: int64
+		lineageTag: 623b6ce9-85a0-4abf-9308-e74f0ecf1e36
+		summarizeBy: none
+		sourceColumn: gold_rows
+
+	column mart_rows
+		dataType: int64
+		lineageTag: c014bbaa-1de9-41a4-b97b-e88f94917a78
+		summarizeBy: none
+		sourceColumn: mart_rows
+
+	column quarantine_rows
+		dataType: int64
+		lineageTag: 641a2c05-13a2-413e-8f90-b8dfad936a2b
+		summarizeBy: none
+		sourceColumn: quarantine_rows
+
+	column silver_counts_json
+		dataType: string
+		lineageTag: 256a907e-6cb6-4716-86df-e330341d0129
+		sourceColumn: silver_counts_json
+
+	column gold_counts_json
+		dataType: string
+		lineageTag: cbbb93b4-e201-4fc2-af80-feb83e402d7b
+		sourceColumn: gold_counts_json
+
+	column mart_counts_json
+		dataType: string
+		lineageTag: 34bec083-f127-46f8-8a62-6029bf40a4e5
+		sourceColumn: mart_counts_json
+
+	column volume_warning
+		dataType: boolean
+		lineageTag: a86078e0-8150-4edc-9916-5d7b1002c7fc
+		sourceColumn: volume_warning
+
+	partition ops_pipeline_runs = m
+		mode: import
+		source = let Source = AmazonAthena.Databases(AthenaDSN, null, []), Catalog = Source{[Name="AwsDataCatalog",Kind="Database"]}[Data], Schema = Catalog{[Name=AthenaDatabase,Kind="Schema"]}[Data], Data = Schema{[Name="ops_pipeline_runs",Kind="Table"]}[Data], Typed = Table.TransformColumns(Data, {{"started_at", each if _ = null then null else DateTimeZone.RemoveZone(DateTimeZone.FromText(_)), type datetime}, {"finished_at", each if _ = null then null else DateTimeZone.RemoveZone(DateTimeZone.FromText(_)), type datetime}}) in Typed
+

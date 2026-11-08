@@ -1,7 +1,7 @@
 # PLAN.md — E-commerce CDC Lakehouse Project
 
 > **Mục tiêu cuối cùng:** Một project Data Engineer hoàn chỉnh chạy end-to-end, bỏ được vào CV/GitHub và demo được trong phỏng vấn:
-> PostgreSQL OLTP (local, sau đó Amazon RDS) → CDC → Amazon S3 Bronze → Databricks trên AWS xử lý Silver/Gold bằng Delta Lake và dbt-databricks (SCD Type 2, Incremental) → dashboard, điều phối bằng Airflow, kiểm tra chất lượng bằng dbt tests + Great Expectations.
+> Hướng triển khai hiện tại: PostgreSQL OLTP → Amazon S3 Bronze → AWS Glue 5.0 Delta Silver → dbt-glue Gold/marts → Athena v3 → Power BI Import. Các kết quả Databricks bên dưới là lịch sử; theo dõi việc chuyển tuyến tại [AWS migration plan](docs/plans/active/aws-glue-migration.md).
 >
 > **Quy tắc làm việc:** Làm xong MVP end-to-end ở scale nhỏ trước (100k orders), rồi mới scale lớn và nâng cấp CDC. Theo lựa chọn hiện tại, Giai đoạn 4 và 5 được triển khai, đối soát local trước rồi kiểm tra cùng nhau trên Databricks. Chỉ đánh dấu tiêu chí "Done" cloud sau khi có kết quả chạy thực; mỗi phần hoàn tất cần tick checklist, commit Git và ghi kết quả vào README.
 

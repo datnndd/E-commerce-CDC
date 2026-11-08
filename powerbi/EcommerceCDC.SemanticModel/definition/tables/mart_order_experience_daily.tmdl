@@ -1,0 +1,81 @@
+table mart_order_experience_daily
+	lineageTag: 67d529b7-e2d9-4fc6-9048-e62b28672259
+
+	measure 'Experience delivered orders' = SUM(mart_order_experience_daily[delivered_order_count])
+		formatString: #,##0
+		lineageTag: ac5c95f7-c4aa-4717-aa83-f685fbea1059
+
+	measure 'Late rate' = DIVIDE(SUM(mart_order_experience_daily[late_delivery_order_count]),SUM(mart_order_experience_daily[orders_with_delivery_date]))
+		formatString: 0.0%
+		lineageTag: 6c596405-45ce-42cf-9b5a-a93cbd077a68
+
+	measure 'Delivery days' = DIVIDE(SUMX(mart_order_experience_daily,mart_order_experience_daily[average_delivery_days]*mart_order_experience_daily[orders_with_delivery_date]),SUM(mart_order_experience_daily[orders_with_delivery_date]))
+		formatString: 0.0
+		lineageTag: 249c1d04-bb29-4d92-b201-7b740611ac34
+
+	measure 'Review score' = DIVIDE(SUMX(mart_order_experience_daily,mart_order_experience_daily[average_order_review_score]*mart_order_experience_daily[reviewed_order_count]),SUM(mart_order_experience_daily[reviewed_order_count]))
+		formatString: 0.00
+		lineageTag: 83246093-f29c-4092-9385-4654b222a8f2
+
+	column purchase_date_key
+		dataType: int64
+		lineageTag: aca59480-9e19-433c-a31f-87bb14ab29ce
+		summarizeBy: none
+		sourceColumn: purchase_date_key
+
+	column purchase_date
+		dataType: dateTime
+		lineageTag: ddd2fa39-9fe3-4265-927c-d1520baf1d93
+		sourceColumn: purchase_date
+
+	column customer_state
+		dataType: string
+		lineageTag: 3246c227-c477-4680-a6d7-25d63632ca00
+		sourceColumn: customer_state
+
+	column delivered_order_count
+		dataType: int64
+		lineageTag: a623f0ee-1909-464b-8e3d-899eaf7cf312
+		summarizeBy: none
+		sourceColumn: delivered_order_count
+
+	column orders_with_delivery_date
+		dataType: int64
+		lineageTag: 966ae0a5-2587-4d19-9d39-989367c47198
+		summarizeBy: none
+		sourceColumn: orders_with_delivery_date
+
+	column late_delivery_order_count
+		dataType: int64
+		lineageTag: dd26109c-59b4-401d-815b-1d1c7b68f131
+		summarizeBy: none
+		sourceColumn: late_delivery_order_count
+
+	column late_delivery_rate
+		dataType: decimal
+		lineageTag: e0218a55-078f-4be9-8c95-d2ec0c345509
+		summarizeBy: none
+		sourceColumn: late_delivery_rate
+
+	column average_delivery_days
+		dataType: decimal
+		lineageTag: d0c7cbe8-8d17-4913-99ce-4f26c43007e6
+		summarizeBy: none
+		sourceColumn: average_delivery_days
+
+	column reviewed_order_count
+		dataType: int64
+		lineageTag: e022d571-4aaa-4d9e-8f83-ab97d533dfa7
+		summarizeBy: none
+		sourceColumn: reviewed_order_count
+
+	column average_order_review_score
+		dataType: decimal
+		lineageTag: 0a0200ae-1a50-4dff-bef7-a297ec26194e
+		summarizeBy: none
+		sourceColumn: average_order_review_score
+
+	partition mart_order_experience_daily = m
+		mode: import
+		source = let Source = AmazonAthena.Databases(AthenaDSN, null, []), Catalog = Source{[Name="AwsDataCatalog",Kind="Database"]}[Data], Schema = Catalog{[Name=AthenaDatabase,Kind="Schema"]}[Data], Data = Schema{[Name="mart_order_experience_daily",Kind="Table"]}[Data] in Data
+

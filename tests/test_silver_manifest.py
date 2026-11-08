@@ -1,4 +1,4 @@
-"""Manifest payload integrity for Databricks S3 Bronze reads."""
+"""Manifest payload integrity for AWS Glue / S3 Bronze reads."""
 
 import hashlib
 import json
@@ -21,11 +21,12 @@ class SilverManifestTest(unittest.TestCase):
         writer.mode.assert_called_once_with("append")
         writer.mode.return_value.save.assert_called_once_with("s3://project/silver/slv_customers")
 
-    def test_spark_python_entrypoint_without_file_global(self):
+    def test_aws_glue_entrypoint_without_file_global(self):
         script = Path(__file__).resolve().parents[1] / "spark_jobs" / "silver_transform.py"
-        namespace = {"__name__": "databricks_spark_python_task"}
+        namespace = {"__name__": "aws_glue_job"}
         exec(compile(script.read_bytes(), str(script), "exec"), namespace)
         self.assertEqual(namespace["KEYS"], KEYS)
+        self.assertNotIn("DATABRICKS_RUNTIME_VERSION", namespace)
 
     def test_oltp_keys_match_source_schema(self):
         for dataset, model in TABLES.items():

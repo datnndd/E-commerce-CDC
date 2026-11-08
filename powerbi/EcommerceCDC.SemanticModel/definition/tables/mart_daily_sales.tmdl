@@ -1,0 +1,91 @@
+table mart_daily_sales
+	lineageTag: df86e3e4-1fa1-4744-af03-8a16dc9ea55c
+
+	measure 'Delivered item revenue' = SUM(mart_daily_sales[delivered_item_revenue_brl])
+		formatString: #,##0.00
+		lineageTag: 753402b8-d30d-45ea-ae5c-9fa980b25efb
+
+	measure Orders = SUM(mart_daily_sales[order_count])
+		formatString: #,##0
+		lineageTag: d965ec7d-003d-413c-a248-073e5884cc32
+
+	measure 'Delivered orders' = SUM(mart_daily_sales[delivered_order_count])
+		formatString: #,##0
+		lineageTag: b2904db7-1ebc-41c0-a0c8-28ed8872f50b
+
+	measure 'AOV delivered item' = DIVIDE([Delivered item revenue],[Delivered orders])
+		formatString: #,##0.00
+		lineageTag: a8ad35a8-83ac-405e-8dd1-03df3594adb1
+
+	measure 'Cancellation rate' = DIVIDE(SUM(mart_daily_sales[canceled_order_count]),[Orders])
+		formatString: 0.0%
+		lineageTag: 14be6c11-ba32-4e18-818b-f00bb7ebfc18
+
+	column purchase_date_key
+		dataType: int64
+		lineageTag: 0b05581a-4f5e-4ea4-ab5c-05b6760ac6fe
+		summarizeBy: none
+		sourceColumn: purchase_date_key
+
+	column purchase_date
+		dataType: dateTime
+		lineageTag: b1dfa42c-8388-4fa4-bfac-5fadd3072b3a
+		sourceColumn: purchase_date
+
+	column customer_state
+		dataType: string
+		lineageTag: f2df8688-bf4d-4140-bb9a-e25cd2970db8
+		sourceColumn: customer_state
+
+	column order_count
+		dataType: int64
+		lineageTag: 717d8016-c031-4c5b-8ba2-67975a80945e
+		summarizeBy: none
+		sourceColumn: order_count
+
+	column delivered_order_count
+		dataType: int64
+		lineageTag: a6efc70a-89f7-42b1-bf29-ba37984f3fd6
+		summarizeBy: none
+		sourceColumn: delivered_order_count
+
+	column canceled_order_count
+		dataType: int64
+		lineageTag: 83606a30-1ad8-476a-b6b9-9cc51f6383cf
+		summarizeBy: none
+		sourceColumn: canceled_order_count
+
+	column delivered_item_revenue_brl
+		dataType: decimal
+		lineageTag: 6e9f2ab5-d8b4-4022-863c-7580d1272d11
+		summarizeBy: none
+		sourceColumn: delivered_item_revenue_brl
+
+	column delivered_freight_brl
+		dataType: decimal
+		lineageTag: c4d058de-8d8b-4518-bb77-b702e034c9da
+		summarizeBy: none
+		sourceColumn: delivered_freight_brl
+
+	column delivered_order_value_brl
+		dataType: decimal
+		lineageTag: d312666d-133d-4b96-bfb7-3bf7b62d80bf
+		summarizeBy: none
+		sourceColumn: delivered_order_value_brl
+
+	column aov_item_brl
+		dataType: decimal
+		lineageTag: 1199d588-9102-4c68-8b6a-717b44f84fe4
+		summarizeBy: none
+		sourceColumn: aov_item_brl
+
+	column cancellation_rate
+		dataType: decimal
+		lineageTag: 042c8504-17f8-44bd-acaa-e3aeb06f90c4
+		summarizeBy: none
+		sourceColumn: cancellation_rate
+
+	partition mart_daily_sales = m
+		mode: import
+		source = let Source = AmazonAthena.Databases(AthenaDSN, null, []), Catalog = Source{[Name="AwsDataCatalog",Kind="Database"]}[Data], Schema = Catalog{[Name=AthenaDatabase,Kind="Schema"]}[Data], Data = Schema{[Name="mart_daily_sales",Kind="Table"]}[Data] in Data
+

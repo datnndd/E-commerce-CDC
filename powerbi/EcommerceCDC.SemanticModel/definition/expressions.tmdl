@@ -1,0 +1,6 @@
+expression AthenaDSN = "EcommerceCDC_Athena" meta [IsParameterQuery=true, Type="Text", IsParameterQueryRequired=true]
+	lineageTag: 817cf18e-3f54-43b1-bc76-c74b8d2aca4e
+
+expression AthenaDatabase = "bi_aws" meta [IsParameterQuery=true, Type="Text", IsParameterQueryRequired=true]
+	lineageTag: 0e9252b7-98ab-4a50-b870-b2b23e10570a
+

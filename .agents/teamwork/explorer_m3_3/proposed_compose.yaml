@@ -1,0 +1,60 @@
+services:
+  postgres:
+    image: postgres:18.6
+    command: ["postgres", "-c", "wal_level=logical"]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?Copy .env.example to .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-ecommerce}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres18_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  airflow:
+    build:
+      context: .
+      dockerfile: docker/airflow.Dockerfile
+    image: ecommerce-airflow-local:stage6
+    command: standalone
+    env_file: .env
+    environment:
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__CORE__PARALLELISM: "2"
+      AIRFLOW__CORE__DAGS_FOLDER: /workspace/airflow/dags
+      POSTGRES_HOST: ${AIRFLOW_POSTGRES_HOST:-host.docker.internal}
+      POSTGRES_PORT: ${AIRFLOW_POSTGRES_PORT:-${POSTGRES_PORT:-5432}}
+      POSTGRES_DB: ${AIRFLOW_POSTGRES_DB:-${POSTGRES_DB:-ecommerce}}
+      S3_BUCKET: ${AIRFLOW_S3_BUCKET:-${S3_BUCKET:-}}
+      AIRFLOW_S3_BUCKET: ${AIRFLOW_S3_BUCKET:-}
+      PIPELINE_S3_PREFIX: ${PIPELINE_S3_PREFIX:-}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-${AWS_REGION:-ap-southeast-1}}
+      AWS_REGION: ${AWS_REGION:-ap-southeast-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+      GLUE_SILVER_JOB_NAME: ${GLUE_SILVER_JOB_NAME:-ecommerce-silver-transform}
+      GLUE_ROLE_ARN: ${GLUE_ROLE_ARN:-arn:aws:iam::123456789012:role/GlueDbtExecutionRole}
+      GLUE_DATABASE: ${GLUE_DATABASE:-${DBT_TARGET_SCHEMA:-analytics_dev}}
+      DBT_SILVER_SCHEMA: ${DBT_SILVER_SCHEMA:-silver}
+      DBT_TARGET_SCHEMA: ${DBT_TARGET_SCHEMA:-analytics_dev}
+      DBT_S3_LOCATION: ${DBT_S3_LOCATION:-}
+      AIRFLOW_CONN_AWS_DEFAULT: '{"conn_type":"aws","extra":{"region_name":"${AWS_REGION:-ap-southeast-1}"}}'
+      AIRFLOW_ALERT_WEBHOOK_URL: ${AIRFLOW_ALERT_WEBHOOK_URL:-}
+      EXCHANGE_BASE_CURRENCY: ${EXCHANGE_BASE_CURRENCY:-BRL}
+      EXCHANGE_QUOTE_CURRENCIES: ${EXCHANGE_QUOTE_CURRENCIES:-USD}
+      UV_PROJECT_ENVIRONMENT: /opt/project-venv
+    ports:
+      - "127.0.0.1:${AIRFLOW_PORT:-8080}:8080"
+    volumes:
+      - airflow_data:/opt/airflow
+      - ./:/workspace
+
+volumes:
+  postgres18_data:
+  airflow_data:

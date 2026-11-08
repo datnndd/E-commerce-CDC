@@ -4,7 +4,8 @@ Date: 2026-11-02
 
 ## Status
 
-Accepted
+Power BI and Import remain accepted. The Databricks source choice is superseded
+by [0004](0004-aws-glue-pipeline.md).
 
 ## Context
 

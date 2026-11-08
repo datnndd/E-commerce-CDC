@@ -1,5 +1,9 @@
 # Execution Plan: Databricks Silver orchestration
 
+Historical path superseded by [AWS Glue migration](aws-glue-migration.md).
+Unverified Databricks follow-ups below remain historical, not current cutover
+criteria.
+
 Date: 2026-11-05
 
 ## Status

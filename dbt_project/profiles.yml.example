@@ -1,11 +1,16 @@
-ecommerce_databricks:
+ecommerce_aws:
   target: dev
   outputs:
     dev:
-      type: databricks
-      auth_type: oauth
-      host: "{{ env_var('DBT_DATABRICKS_HOST') }}"
-      http_path: "{{ env_var('DBT_DATABRICKS_HTTP_PATH') }}"
-      database: "{{ env_var('DBT_CATALOG') }}"
-      schema: "{{ env_var('DBT_TARGET_SCHEMA', 'analytics_dev') }}"
-      threads: 2
+      type: glue
+      query_type: spark
+      region: "{{ env_var('AWS_REGION', 'ap-southeast-1') }}"
+      role_arn: "{{ env_var('GLUE_ROLE_ARN') }}"
+      schema: "{{ env_var('DBT_TARGET_SCHEMA') }}"
+      location: "{{ env_var('DBT_S3_LOCATION') }}"
+      datalake_formats: "delta"
+      conf: "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog"
+      glue_version: "5.0"
+      workers: 2
+      worker_type: G.1X
+      idle_timeout: 10

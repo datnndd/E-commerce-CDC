@@ -1,0 +1,112 @@
+table mart_funnel_daily
+	lineageTag: c7b24f25-d247-4297-8150-97770ea8607b
+
+	measure Sessions = SUM(mart_funnel_daily[session_count])
+		formatString: #,##0
+		lineageTag: 13a7eb05-8e98-4be5-8f17-2ab9d8ba5e66
+
+	measure 'View sessions' = SUM(mart_funnel_daily[view_sessions])
+		formatString: #,##0
+		lineageTag: a5c648e2-879a-4031-a3fa-09ec80242a22
+
+	measure 'Cart sessions' = SUM(mart_funnel_daily[cart_sessions])
+		formatString: #,##0
+		lineageTag: 322d821e-087c-4b9c-bde4-4f1e1813b1bf
+
+	measure 'Checkout sessions' = SUM(mart_funnel_daily[checkout_sessions])
+		formatString: #,##0
+		lineageTag: 7a733e49-4f69-4a2a-a5f3-923864eaf8cb
+
+	measure 'Purchase sessions' = SUM(mart_funnel_daily[purchase_sessions])
+		formatString: #,##0
+		lineageTag: c5bc7544-5c1c-4766-af54-b76d243fa843
+
+	measure 'Purchase rate' = DIVIDE([Purchase sessions],[Sessions])
+		formatString: 0.0%
+		lineageTag: b3814893-2374-4d7e-b503-d01ca468fda8
+
+	column session_date_key
+		dataType: int64
+		lineageTag: bb15050c-bd73-4273-8f89-2c6f5bc7ccd7
+		summarizeBy: none
+		sourceColumn: session_date_key
+
+	column session_date
+		dataType: dateTime
+		lineageTag: 621e8d6f-321d-4581-89bc-23e319e0a370
+		sourceColumn: session_date
+
+	column device
+		dataType: string
+		lineageTag: 184fe99c-805e-4daf-9745-ea30c3aae24d
+		sourceColumn: device
+
+	column channel_key
+		dataType: string
+		lineageTag: 5b416a27-1dc3-4e07-b3c6-4b41955f044d
+		sourceColumn: channel_key
+
+	column session_count
+		dataType: int64
+		lineageTag: c82f91ab-447e-42fa-85d4-986776847c09
+		summarizeBy: none
+		sourceColumn: session_count
+
+	column event_count
+		dataType: int64
+		lineageTag: 802283c4-1bfc-4a6a-817d-94e3c7036198
+		summarizeBy: none
+		sourceColumn: event_count
+
+	column view_sessions
+		dataType: int64
+		lineageTag: 1f1fa779-2133-4854-bfe5-a30a63aea673
+		summarizeBy: none
+		sourceColumn: view_sessions
+
+	column cart_sessions
+		dataType: int64
+		lineageTag: 9d148d9f-a35b-4f37-a1ea-2538b5f4fa82
+		summarizeBy: none
+		sourceColumn: cart_sessions
+
+	column checkout_sessions
+		dataType: int64
+		lineageTag: c26cd171-fefc-4ecb-8c87-3cf369561f6d
+		summarizeBy: none
+		sourceColumn: checkout_sessions
+
+	column purchase_sessions
+		dataType: int64
+		lineageTag: c43d007a-e34e-4299-b095-290dacafd477
+		summarizeBy: none
+		sourceColumn: purchase_sessions
+
+	column session_purchase_rate
+		dataType: decimal
+		lineageTag: 04043a01-a530-4b09-9701-4692a29b234a
+		summarizeBy: none
+		sourceColumn: session_purchase_rate
+
+	column view_to_cart_rate
+		dataType: decimal
+		lineageTag: dfb6f6cd-a2b1-458e-acc9-82e14a83802a
+		summarizeBy: none
+		sourceColumn: view_to_cart_rate
+
+	column cart_to_checkout_rate
+		dataType: decimal
+		lineageTag: faf6ad88-0a6f-4fe5-9c3b-31dd9ee35624
+		summarizeBy: none
+		sourceColumn: cart_to_checkout_rate
+
+	column checkout_to_purchase_rate
+		dataType: decimal
+		lineageTag: 744b8fb2-a206-40b6-bc8b-594de470d099
+		summarizeBy: none
+		sourceColumn: checkout_to_purchase_rate
+
+	partition mart_funnel_daily = m
+		mode: import
+		source = let Source = AmazonAthena.Databases(AthenaDSN, null, []), Catalog = Source{[Name="AwsDataCatalog",Kind="Database"]}[Data], Schema = Catalog{[Name=AthenaDatabase,Kind="Schema"]}[Data], Data = Schema{[Name="mart_funnel_daily",Kind="Table"]}[Data] in Data
+
