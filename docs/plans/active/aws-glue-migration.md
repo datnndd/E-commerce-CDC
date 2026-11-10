@@ -67,6 +67,11 @@ unrelated OLTP/Bronze transformations.
 - [x] Update architecture, runbook, and repository-wide offline validation.
 - [x] Align Glue job and dbt sessions to Glue 6.0 and its Delta configuration;
   verify the configuration contract offline.
+- [x] Fix Glue 6.0 manifest discovery for underscore-prefixed Bronze files,
+  test against the existing test-bucket manifests, and deploy the new versioned
+  script/library through `glue-silver-job-stack`.
+- [x] Correct Athena SELECT identifier quoting and observe a successful
+  test-bucket manual run through Silver, Gold, Athena, and Ops.
 - [ ] Validate isolated live run, negative fixture, and same-date rerun.
 - [ ] Reconcile and switch main path and Power BI, then verify scheduling.
 
@@ -89,19 +94,40 @@ unrelated OLTP/Bronze transformations.
   An in-memory negative check rejected both Glue 5.0 and the deprecated global
   LogStore setting. Power BI Modeling MCP serialized
   and reloaded seven Import tables and 26 measures.
-- Integration or end-to-end proof: `dbt compile` compiled 122/122 resources
-  with offline placeholders, but emitted AWS credential-refresh warnings. No
-  Glue/Athena/Power BI data run has passed. AWS CLI `sts get-caller-identity`
-  reports an expired `aws login` session, and this Windows machine has no
-  Athena ODBC DSN.
+- Initial integration baseline: `dbt compile` compiled 122/122 resources with
+  offline placeholders, but emitted AWS credential-refresh warnings. At that
+  point no Glue/Athena/Power BI data run had passed and the Windows machine had
+  no Athena ODBC DSN; recheck the DSN before Power BI refresh.
 - Repository-required checks: `uv run python -m unittest discover -s tests
   -p 'test_*.py' -q` passed 85 tests with 16 skipped after the Glue 6.0
   configuration update; Python compileall and
   `git diff --check` passed. Line-ending normalization warnings were emitted
   by Git on Windows; no whitespace errors remain.
+- 2026-11-10: Glue run `jr_b9123b6bc1196154d6a66799667414dc53c20b4d32de69a56dfe6118b585d2b8`
+  failed at `customers` because Spark 4.1 did not list `_manifest.json` files.
+  A regression test failed before the fix and passed after it; the full suite
+  passed 87 tests with 16 skipped. The updated S3 reader found committed
+  manifests for all 12 datasets in the test bucket. Versioned artifacts
+  `e102b6d415f7a07a` were uploaded and the CloudFormation stack reached
+  `UPDATE_COMPLETE`; the Glue job points to those artifacts.
+- 2026-11-10: Airflow manual run `manual__2026-11-10T02:35:08.226263+00:00`
+  succeeded through Glue Silver, dbt, Athena publish, and Ops. Athena rejected
+  SELECT queries using DDL-style backticks; double-quoted identifiers passed
+  a live `count(*)` on `bi_aws.fct_orders`. The corrected publisher registered
+  13 Delta tables and the Ops table, with all 13 Delta counts and Ops counting
+  succeeding. The full offline suite passed 87 tests with 16 skipped.
+- The automatic `scheduled__2026-11-10T00:00:00+00:00` run began while the DAG
+  was unpaused. Per owner direction, it completed Glue Silver, then the DAG was
+  marked failed and Ops recorded measured Silver rows with downstream counts
+  null. The DAG is paused. Twenty-three legacy test Ops JSON files were copied
+  with checksum verification to `ops/archive/legacy_test_runs/2026-11-10/` and
+  removed from the Athena table prefix. Athena now reads exactly four current
+  run objects. The older failed `scheduled__2026-11-09T00:00:00+00:00` Ops
+  record was reconciled from `running` to `failed`, retaining a backup under
+  `ops/archive/reconciled/2026-11-10/`.
 
 ## Result
 
-Repository implementation is in place. Live isolated validation, main cutover,
-and populated Power BI verification remain pending authenticated AWS access
-and Athena ODBC setup. Keep the DAG paused.
+Repository implementation and one test-bucket manual run through Athena and
+Ops are proven. Isolated negative and same-date rerun checks, main cutover,
+and a populated seven-table Power BI refresh remain pending. Keep the DAG paused.

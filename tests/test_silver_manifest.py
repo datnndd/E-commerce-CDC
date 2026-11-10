@@ -1,6 +1,7 @@
 """Manifest payload integrity for AWS Glue / S3 Bronze reads."""
 
 import hashlib
+from io import BytesIO
 import json
 import unittest
 from pathlib import Path
@@ -44,24 +45,31 @@ class SilverManifestTest(unittest.TestCase):
         spark.read.format.return_value.load.assert_called_once_with(
             "s3://project/bronze/orders/part-0000.parquet")
 
-    def test_manifest_listing_uses_spark_and_preserves_run_path(self):
+    @patch("spark_jobs.silver_transform.boto3.client")
+    def test_s3_manifest_listing_reads_hidden_files_and_preserves_run_path(self, client):
         spark = MagicMock()
-        manifest = {"started_at": "2026-11-05T00:00:00Z", "status": "committed"}
-        row = SimpleNamespace(
-            path="s3://project/test/bronze/postgres_oltp/orders/run_id=1/_manifest.json",
-            content=json.dumps(manifest).encode())
-        reader = spark.read.format.return_value
-        recursive = reader.option.return_value
-        manifests_only = recursive.option.return_value
-        include_hidden = manifests_only.option.return_value
-        include_hidden.load.return_value.select.return_value.collect.return_value = [row]
+        prefix = "test/bronze/postgres_oltp/orders/"
+        first = prefix + "run_id=1/_manifest.json"
+        second = prefix + "run_id=2/_manifest.json"
+        manifests = {
+            first: {"started_at": "2026-11-05T00:00:00Z", "status": "committed"},
+            second: {"started_at": "2026-11-06T00:00:00Z", "status": "committed"},
+        }
+        s3 = client.return_value
+        s3.get_paginator.return_value.paginate.return_value = [
+            {"Contents": [{"Key": second}, {"Key": prefix + "part-0000.parquet"}]},
+            {"Contents": [{"Key": first}]},
+        ]
+        s3.get_object.side_effect = lambda **kwargs: {
+            "Body": BytesIO(json.dumps(manifests[kwargs["Key"]]).encode())}
+
         self.assertEqual(load_manifests_from_s3(spark, "s3://project/test", "orders"), [
-            (manifest, "s3://project/test/bronze/postgres_oltp/orders/run_id=1")])
-        reader.option.assert_called_once_with("recursiveFileLookup", "true")
-        recursive.option.assert_called_once_with("pathGlobFilter", "_manifest.json")
-        manifests_only.option.assert_called_once_with("ignoredPathSegmentRegex", "")
-        include_hidden.load.assert_called_once_with(
-            "s3://project/test/bronze/postgres_oltp/orders")
+            (manifests[first], "s3://project/" + first.rsplit("/", 1)[0]),
+            (manifests[second], "s3://project/" + second.rsplit("/", 1)[0]),
+        ])
+        s3.get_paginator.return_value.paginate.assert_called_once_with(
+            Bucket="project", Prefix=prefix)
+        spark.read.format.assert_not_called()
 
     def test_s3_corruption_fails_before_spark_read(self):
         body = b"committed Bronze payload"

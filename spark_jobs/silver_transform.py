@@ -11,6 +11,7 @@ import re
 import sys
 from urllib.parse import urlsplit
 
+import boto3
 import great_expectations as gx
 from delta.tables import DeltaTable
 from pyspark.sql import DataFrame, SparkSession, Window, functions as F
@@ -68,17 +69,20 @@ def bronze_dataset_subpath(dataset: str) -> str:
 
 
 def load_manifests_from_s3(spark: SparkSession, s3_root: str, dataset: str) -> list[tuple[dict, str]]:
-    path = f"{s3_root.rstrip('/')}/{bronze_dataset_subpath(dataset)}"
-    # Spark hides underscore-prefixed files unless this filter is disabled.
-    rows = (spark.read.format("binaryFile")
-            .option("recursiveFileLookup", "true")
-            .option("pathGlobFilter", "_manifest.json")
-            .option("ignoredPathSegmentRegex", "")
-            .load(path).select("path", "content").collect())
+    parsed = urlsplit(s3_root)
+    prefix = parsed.path.strip("/")
+    dataset_prefix = f"{prefix + '/' if prefix else ''}{bronze_dataset_subpath(dataset)}/"
+    # Glue 6.0's Spark 4.1 skips underscore-prefixed manifest files during listing.
+    s3 = boto3.client("s3")
     manifests = []
-    for row in rows:
-        manifest = json.loads(row.content.decode("utf-8"))
-        manifests.append((manifest, row.path.rsplit("/", 1)[0]))
+    for page in s3.get_paginator("list_objects_v2").paginate(Bucket=parsed.netloc, Prefix=dataset_prefix):
+        for item in page.get("Contents", []):
+            key = item["Key"]
+            if not key.endswith("/_manifest.json"):
+                continue
+            with s3.get_object(Bucket=parsed.netloc, Key=key)["Body"] as body:
+                manifest = json.loads(body.read())
+            manifests.append((manifest, f"{parsed.scheme}://{parsed.netloc}/{key.rsplit('/', 1)[0]}"))
     return sorted(manifests, key=lambda item: item[0].get("started_at", ""))
 
 

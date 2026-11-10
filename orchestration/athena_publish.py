@@ -95,7 +95,7 @@ def publish_tables() -> None:
                 f"CREATE EXTERNAL TABLE `{bi_database}`.`{name}` LOCATION '{location}' "
                 "TBLPROPERTIES ('table_type'='DELTA')"
             )
-        run_query(f"SELECT count(*) FROM `{bi_database}`.`{name}`", bi_database)
+        run_query(f'SELECT count(*) FROM "{bi_database}"."{name}"', bi_database)
 
     bucket = os.environ.get("AIRFLOW_S3_BUCKET") or os.environ["S3_BUCKET"]
     prefix = os.environ.get("PIPELINE_S3_PREFIX", "").strip("/")
@@ -125,7 +125,7 @@ def count_gold_tables() -> tuple[dict[str, int], dict[str, int]]:
     def count(names: tuple[str, ...]) -> dict[str, int]:
         result = {}
         for name in names:
-            rows = run_query(f"SELECT count(*) FROM `{database}`.`{name}`", database)
+            rows = run_query(f'SELECT count(*) FROM "{database}"."{name}"', database)
             result[name] = int(rows[1]["Data"][0]["VarCharValue"])
         return result
     return count(GOLD_FACTS), count(BUSINESS_MARTS)

@@ -33,7 +33,11 @@ class AthenaPublishTest(unittest.TestCase):
              patch.object(module, "run_query", side_effect=lambda sql, *_: queries.append(sql)):
             module.publish_tables()
         self.assertEqual(sum("TBLPROPERTIES ('table_type'='DELTA')" in q for q in queries), 13)
-        self.assertEqual(sum(q.startswith("SELECT count(*)") for q in queries), 13)
+        self.assertEqual(
+            [q for q in queries if q.startswith("SELECT count(*)")],
+            [f'SELECT count(*) FROM "bi_aws"."{name}"'
+             for name in (*module.GOLD_FACTS, *module.BUSINESS_MARTS)],
+        )
         self.assertTrue(any("ops_pipeline_runs" in q and "rehearsal/ops/runs/" in q for q in queries))
 
     def test_rejects_existing_table_at_other_location(self):
@@ -84,6 +88,8 @@ class AthenaPublishTest(unittest.TestCase):
         self.assertEqual(len(marts), 6)
         self.assertTrue(all(value == 17 for value in (*facts.values(), *marts.values())))
         self.assertEqual(query.call_count, 13)
+        self.assertEqual(query.call_args_list[0].args,
+                         ('SELECT count(*) FROM "bi_aws"."fct_orders"', 'bi_aws'))
 
 
 if __name__ == "__main__":
