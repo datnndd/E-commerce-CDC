@@ -1,5 +1,5 @@
 {
-  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.9.0/schema.json",
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.14.0/schema.json",
   "name": "5ec4af58838f0afc050c",
   "position": {
     "x": 444,
@@ -27,7 +27,8 @@
                 }
               },
               "queryRef": "mart_order_experience_daily.customer_state",
-              "nativeQueryRef": "customer_state"
+              "nativeQueryRef": "customer_state",
+              "active": true
             }
           ]
         },

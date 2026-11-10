@@ -28,83 +28,130 @@ table mart_funnel_daily
 	column session_date_key
 		dataType: int64
 		lineageTag: bb15050c-bd73-4273-8f89-2c6f5bc7ccd7
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: session_date_key
+
+		annotation SummarizationSetBy = Automatic
 
 	column session_date
 		dataType: dateTime
+		formatString: Long Date
 		lineageTag: 621e8d6f-321d-4581-89bc-23e319e0a370
+		summarizeBy: none
 		sourceColumn: session_date
+
+		variation Variation
+			isDefault
+			relationship: dc6f2558-c9c8-4e57-bc6c-10300012ed22
+			defaultHierarchy: LocalDateTable_80f68e95-2775-4bcf-ac93-da3dfc727fcc.'Date Hierarchy'
+
+		annotation UnderlyingDateTimeDataType = Date
+
+		annotation SummarizationSetBy = Automatic
 
 	column device
 		dataType: string
 		lineageTag: 184fe99c-805e-4daf-9745-ea30c3aae24d
+		summarizeBy: none
 		sourceColumn: device
+
+		annotation SummarizationSetBy = Automatic
 
 	column channel_key
 		dataType: string
 		lineageTag: 5b416a27-1dc3-4e07-b3c6-4b41955f044d
+		summarizeBy: none
 		sourceColumn: channel_key
+
+		annotation SummarizationSetBy = Automatic
 
 	column session_count
 		dataType: int64
 		lineageTag: c82f91ab-447e-42fa-85d4-986776847c09
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: session_count
+
+		annotation SummarizationSetBy = Automatic
 
 	column event_count
 		dataType: int64
 		lineageTag: 802283c4-1bfc-4a6a-817d-94e3c7036198
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: event_count
+
+		annotation SummarizationSetBy = Automatic
 
 	column view_sessions
 		dataType: int64
 		lineageTag: 1f1fa779-2133-4854-bfe5-a30a63aea673
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: view_sessions
+
+		annotation SummarizationSetBy = Automatic
 
 	column cart_sessions
 		dataType: int64
 		lineageTag: 9d148d9f-a35b-4f37-a1ea-2538b5f4fa82
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: cart_sessions
+
+		annotation SummarizationSetBy = Automatic
 
 	column checkout_sessions
 		dataType: int64
 		lineageTag: c26cd171-fefc-4ecb-8c87-3cf369561f6d
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: checkout_sessions
+
+		annotation SummarizationSetBy = Automatic
 
 	column purchase_sessions
 		dataType: int64
 		lineageTag: c43d007a-e34e-4299-b095-290dacafd477
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: purchase_sessions
 
+		annotation SummarizationSetBy = Automatic
+
 	column session_purchase_rate
-		dataType: decimal
+		dataType: double
 		lineageTag: 04043a01-a530-4b09-9701-4692a29b234a
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: session_purchase_rate
 
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
 	column view_to_cart_rate
-		dataType: decimal
+		dataType: double
 		lineageTag: dfb6f6cd-a2b1-458e-acc9-82e14a83802a
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: view_to_cart_rate
 
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
 	column cart_to_checkout_rate
-		dataType: decimal
+		dataType: double
 		lineageTag: faf6ad88-0a6f-4fe5-9c3b-31dd9ee35624
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: cart_to_checkout_rate
 
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
 	column checkout_to_purchase_rate
-		dataType: decimal
+		dataType: double
 		lineageTag: 744b8fb2-a206-40b6-bc8b-594de470d099
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: checkout_to_purchase_rate
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
 
 	partition mart_funnel_daily = m
 		mode: import

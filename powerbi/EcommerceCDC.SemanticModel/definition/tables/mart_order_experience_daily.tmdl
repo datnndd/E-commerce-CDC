@@ -20,60 +20,96 @@ table mart_order_experience_daily
 	column purchase_date_key
 		dataType: int64
 		lineageTag: aca59480-9e19-433c-a31f-87bb14ab29ce
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: purchase_date_key
+
+		annotation SummarizationSetBy = Automatic
 
 	column purchase_date
 		dataType: dateTime
+		formatString: Long Date
 		lineageTag: ddd2fa39-9fe3-4265-927c-d1520baf1d93
+		summarizeBy: none
 		sourceColumn: purchase_date
+
+		variation Variation
+			isDefault
+			relationship: 808e01f1-9f1a-41b8-9b82-1b05fbd2184c
+			defaultHierarchy: LocalDateTable_c979c788-4874-4085-80dc-5c894447c8e8.'Date Hierarchy'
+
+		annotation UnderlyingDateTimeDataType = Date
+
+		annotation SummarizationSetBy = Automatic
 
 	column customer_state
 		dataType: string
 		lineageTag: 3246c227-c477-4680-a6d7-25d63632ca00
+		summarizeBy: none
 		sourceColumn: customer_state
+
+		annotation SummarizationSetBy = Automatic
 
 	column delivered_order_count
 		dataType: int64
 		lineageTag: a623f0ee-1909-464b-8e3d-899eaf7cf312
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: delivered_order_count
+
+		annotation SummarizationSetBy = Automatic
 
 	column orders_with_delivery_date
 		dataType: int64
 		lineageTag: 966ae0a5-2587-4d19-9d39-989367c47198
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: orders_with_delivery_date
+
+		annotation SummarizationSetBy = Automatic
 
 	column late_delivery_order_count
 		dataType: int64
 		lineageTag: dd26109c-59b4-401d-815b-1d1c7b68f131
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: late_delivery_order_count
 
+		annotation SummarizationSetBy = Automatic
+
 	column late_delivery_rate
-		dataType: decimal
+		dataType: double
 		lineageTag: e0218a55-078f-4be9-8c95-d2ec0c345509
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: late_delivery_rate
 
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
 	column average_delivery_days
-		dataType: decimal
+		dataType: double
 		lineageTag: d0c7cbe8-8d17-4913-99ce-4f26c43007e6
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: average_delivery_days
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
 
 	column reviewed_order_count
 		dataType: int64
 		lineageTag: e022d571-4aaa-4d9e-8f83-ab97d533dfa7
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: reviewed_order_count
 
+		annotation SummarizationSetBy = Automatic
+
 	column average_order_review_score
-		dataType: decimal
+		dataType: double
 		lineageTag: 0a0200ae-1a50-4dff-bef7-a297ec26194e
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: average_order_review_score
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
 
 	partition mart_order_experience_daily = m
 		mode: import

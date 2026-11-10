@@ -1,5 +1,5 @@
 {
-  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.9.0/schema.json",
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.14.0/schema.json",
   "name": "719f96ee74deb33a809e",
   "position": {
     "x": 434,
@@ -27,7 +27,8 @@
                 }
               },
               "queryRef": "mart_customer_rfm.segment",
-              "nativeQueryRef": "segment"
+              "nativeQueryRef": "segment",
+              "active": true
             }
           ]
         },

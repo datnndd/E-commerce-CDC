@@ -1,0 +1,30 @@
+relationship 093e3076-5f69-4124-aef2-ac66e64b06cf
+	joinOnDateBehavior: datePartOnly
+	fromColumn: mart_daily_sales.purchase_date
+	toColumn: LocalDateTable_80c22dc1-e5fd-4790-8c2d-2fe1ba50ca34.Date
+
+relationship a78f19aa-66e3-4b2a-bf1c-742d29b96b1a
+	joinOnDateBehavior: datePartOnly
+	fromColumn: mart_customer_rfm.as_of_date
+	toColumn: LocalDateTable_c83f4ed3-f5be-43e2-b5d8-1909f9d1c471.Date
+
+relationship 5fa078f8-910e-42c5-b4d0-f45f2481e5ed
+	joinOnDateBehavior: datePartOnly
+	fromColumn: mart_customer_rfm.last_purchase_date
+	toColumn: LocalDateTable_29338ac3-d05d-4dae-8cf5-89bc3cc746fe.Date
+
+relationship 01ac03c9-6c9e-4f85-ae98-fc7c3d65cdc7
+	joinOnDateBehavior: datePartOnly
+	fromColumn: mart_payment_mix_daily.order_purchase_date
+	toColumn: LocalDateTable_c4c3ff88-934d-424c-b64c-bccbee656585.Date
+
+relationship 808e01f1-9f1a-41b8-9b82-1b05fbd2184c
+	joinOnDateBehavior: datePartOnly
+	fromColumn: mart_order_experience_daily.purchase_date
+	toColumn: LocalDateTable_c979c788-4874-4085-80dc-5c894447c8e8.Date
+
+relationship dc6f2558-c9c8-4e57-bc6c-10300012ed22
+	joinOnDateBehavior: datePartOnly
+	fromColumn: mart_funnel_daily.session_date
+	toColumn: LocalDateTable_80f68e95-2775-4bcf-ac93-da3dfc727fcc.Date
+

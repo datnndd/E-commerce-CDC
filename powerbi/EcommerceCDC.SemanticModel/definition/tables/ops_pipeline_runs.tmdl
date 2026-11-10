@@ -106,6 +106,32 @@ table ops_pipeline_runs
 		lineageTag: a86078e0-8150-4edc-9916-5d7b1002c7fc
 		sourceColumn: volume_warning
 
+	column execution_date
+		dataType: string
+		lineageTag: bf0afde1-269e-4891-b149-d4c9d6dfaf04
+		summarizeBy: none
+		sourceColumn: execution_date
+
+		annotation SummarizationSetBy = Automatic
+
+	column duration_seconds
+		dataType: double
+		lineageTag: 6c0dc7c4-e70e-49d3-a176-7b288cb13116
+		summarizeBy: sum
+		sourceColumn: duration_seconds
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column error_message
+		dataType: string
+		lineageTag: 333ce2dc-3047-4ea9-9149-173e2a355181
+		summarizeBy: none
+		sourceColumn: error_message
+
+		annotation SummarizationSetBy = Automatic
+
 	partition ops_pipeline_runs = m
 		mode: import
 		source = let Source = AmazonAthena.Databases(AthenaDSN, null, []), Catalog = Source{[Name="AwsDataCatalog",Kind="Database"]}[Data], Schema = Catalog{[Name=AthenaDatabase,Kind="Schema"]}[Data], Data = Schema{[Name="ops_pipeline_runs",Kind="Table"]}[Data], Typed = Table.TransformColumns(Data, {{"started_at", each if _ = null then null else DateTimeZone.RemoveZone(DateTimeZone.FromText(_)), type datetime}, {"finished_at", each if _ = null then null else DateTimeZone.RemoveZone(DateTimeZone.FromText(_)), type datetime}}) in Typed

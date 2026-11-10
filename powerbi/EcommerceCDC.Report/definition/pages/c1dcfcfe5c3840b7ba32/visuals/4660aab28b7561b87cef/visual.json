@@ -1,5 +1,5 @@
 {
-  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.9.0/schema.json",
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.14.0/schema.json",
   "name": "4660aab28b7561b87cef",
   "position": {
     "x": 24,
@@ -27,7 +27,8 @@
                 }
               },
               "queryRef": "mart_daily_sales.purchase_date",
-              "nativeQueryRef": "purchase_date"
+              "nativeQueryRef": "purchase_date",
+              "active": true
             }
           ]
         },
@@ -66,5 +67,37 @@
         }
       ]
     }
+  },
+  "filterConfig": {
+    "filters": [
+      {
+        "name": "c38bbde5205019d11a00",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "mart_daily_sales"
+              }
+            },
+            "Property": "purchase_date"
+          }
+        },
+        "type": "Categorical"
+      },
+      {
+        "name": "bacca9344e31e1a28157",
+        "field": {
+          "Measure": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "mart_daily_sales"
+              }
+            },
+            "Property": "Delivered item revenue"
+          }
+        },
+        "type": "Advanced"
+      }
+    ]
   }
 }

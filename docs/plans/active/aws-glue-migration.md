@@ -72,6 +72,9 @@ unrelated OLTP/Bronze transformations.
   script/library through `glue-silver-job-stack`.
 - [x] Correct Athena SELECT identifier quoting and observe a successful
   test-bucket manual run through Silver, Gold, Athena, and Ops.
+- [x] Refresh all seven test-bucket Athena Import tables in Power BI Desktop,
+  inspect five populated pages, and reconcile five Executive cards to Athena
+  marts/facts and the frozen OLTP baseline.
 - [ ] Validate isolated live run, negative fixture, and same-date rerun.
 - [ ] Reconcile and switch main path and Power BI, then verify scheduling.
 
@@ -125,9 +128,20 @@ unrelated OLTP/Bronze transformations.
   run objects. The older failed `scheduled__2026-11-09T00:00:00+00:00` Ops
   record was reconciled from `running` to `failed`, retaining a backup under
   `ops/archive/reconciled/2026-11-10/`.
+- 2026-11-10: Power BI Desktop's seven Athena Import partitions reached `Ready`
+  after the IAM-backed DSN used `UseSingleCatalogAndSchema=1` and Power BI
+  credentials used **Use Data Source Configuration** instead of cached AAD
+  Authentication. Power BI row counts were 10,742 daily sales, 33,659 product,
+  93,358 RFM, 20 funnel, 2,276 payment, 10,608 experience, and four Ops runs.
+  All five pages displayed data. Five unfiltered Executive numbers matched
+  Athena mart/fact aggregates and the frozen Olist OLTP baseline; see the
+  [completed Stage 7 plan](../completed/stage-7-dashboard.md) for exact values
+  and limits. This is test-bucket Desktop proof, not main cutover or
+  Service/gateway refresh.
 
 ## Result
 
-Repository implementation and one test-bucket manual run through Athena and
-Ops are proven. Isolated negative and same-date rerun checks, main cutover,
-and a populated seven-table Power BI refresh remain pending. Keep the DAG paused.
+Repository implementation, one test-bucket manual run through Athena and Ops,
+and a populated seven-table Power BI Desktop refresh are proven. Isolated
+negative and same-date rerun checks, main cutover, and Service/gateway refresh
+remain pending. Keep the DAG paused.

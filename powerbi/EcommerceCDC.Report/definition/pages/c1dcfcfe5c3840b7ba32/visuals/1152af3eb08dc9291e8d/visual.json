@@ -1,5 +1,5 @@
 {
-  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.9.0/schema.json",
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.14.0/schema.json",
   "name": "1152af3eb08dc9291e8d",
   "position": {
     "x": 295,
@@ -27,7 +27,8 @@
                 }
               },
               "queryRef": "mart_daily_sales.customer_state",
-              "nativeQueryRef": "customer_state"
+              "nativeQueryRef": "customer_state",
+              "active": true
             }
           ]
         }
@@ -65,6 +66,11 @@
               }
             }
           }
+        }
+      ],
+      "general": [
+        {
+          "properties": {}
         }
       ]
     },

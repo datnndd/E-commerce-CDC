@@ -1,5 +1,5 @@
 {
-  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.9.0/schema.json",
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.14.0/schema.json",
   "name": "cff4a4110595ee2c3937",
   "position": {
     "x": 434,
@@ -27,7 +27,8 @@
                 }
               },
               "queryRef": "mart_product_performance.seller_state",
-              "nativeQueryRef": "seller_state"
+              "nativeQueryRef": "seller_state",
+              "active": true
             }
           ]
         },

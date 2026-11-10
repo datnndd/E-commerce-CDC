@@ -24,66 +24,108 @@ table mart_daily_sales
 	column purchase_date_key
 		dataType: int64
 		lineageTag: 0b05581a-4f5e-4ea4-ab5c-05b6760ac6fe
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: purchase_date_key
+
+		annotation SummarizationSetBy = Automatic
 
 	column purchase_date
 		dataType: dateTime
+		formatString: Long Date
 		lineageTag: b1dfa42c-8388-4fa4-bfac-5fadd3072b3a
+		summarizeBy: none
 		sourceColumn: purchase_date
+
+		variation Variation
+			isDefault
+			relationship: 093e3076-5f69-4124-aef2-ac66e64b06cf
+			defaultHierarchy: LocalDateTable_80c22dc1-e5fd-4790-8c2d-2fe1ba50ca34.'Date Hierarchy'
+
+		annotation UnderlyingDateTimeDataType = Date
+
+		annotation SummarizationSetBy = Automatic
 
 	column customer_state
 		dataType: string
 		lineageTag: f2df8688-bf4d-4140-bb9a-e25cd2970db8
+		summarizeBy: none
 		sourceColumn: customer_state
+
+		annotation SummarizationSetBy = Automatic
 
 	column order_count
 		dataType: int64
 		lineageTag: 717d8016-c031-4c5b-8ba2-67975a80945e
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: order_count
+
+		annotation SummarizationSetBy = Automatic
 
 	column delivered_order_count
 		dataType: int64
 		lineageTag: a6efc70a-89f7-42b1-bf29-ba37984f3fd6
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: delivered_order_count
+
+		annotation SummarizationSetBy = Automatic
 
 	column canceled_order_count
 		dataType: int64
 		lineageTag: 83606a30-1ad8-476a-b6b9-9cc51f6383cf
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: canceled_order_count
 
+		annotation SummarizationSetBy = Automatic
+
 	column delivered_item_revenue_brl
-		dataType: decimal
+		dataType: double
 		lineageTag: 6e9f2ab5-d8b4-4022-863c-7580d1272d11
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: delivered_item_revenue_brl
 
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
 	column delivered_freight_brl
-		dataType: decimal
+		dataType: double
 		lineageTag: c4d058de-8d8b-4518-bb77-b702e034c9da
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: delivered_freight_brl
 
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
 	column delivered_order_value_brl
-		dataType: decimal
+		dataType: double
 		lineageTag: d312666d-133d-4b96-bfb7-3bf7b62d80bf
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: delivered_order_value_brl
 
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
 	column aov_item_brl
-		dataType: decimal
+		dataType: double
 		lineageTag: 1199d588-9102-4c68-8b6a-717b44f84fe4
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: aov_item_brl
 
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
 	column cancellation_rate
-		dataType: decimal
+		dataType: double
 		lineageTag: 042c8504-17f8-44bd-acaa-e3aeb06f90c4
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: cancellation_rate
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
 
 	partition mart_daily_sales = m
 		mode: import

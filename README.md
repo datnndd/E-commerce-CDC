@@ -333,7 +333,7 @@ The Power BI reporting layer is version-controlled in the modern open Microsoft 
 
 - **7 Import Tables**: 6 Business Marts (`mart_daily_sales`, `mart_product_performance`, `mart_customer_rfm`, `mart_funnel_daily`, `mart_payment_mix_daily`, `mart_order_experience_daily`) plus the operational audit table `ops_pipeline_runs`.
 - **26 DAX Measures**: Month-over-month (MoM) revenue growth, late delivery percentages, customer satisfaction (CSAT), RFM score distributions, and conversion funnel drop-offs.
-- **Amazon Athena ODBC Connectivity**: Direct connection to AWS Lakehouse data using the Amazon Athena ODBC driver and On-Premises Data Gateway for automated scheduled refresh.
+- **Amazon Athena ODBC Connectivity**: Desktop Import from the AWS lakehouse is verified. Power BI Service publication and scheduled refresh through a gateway still need separate validation.
 
 ### 5 Specialized Report Pages:
 1. **Executive / Sales**: Company-wide revenue trends, order volume growth, geographical sales distribution across Brazilian states, and top-line financial KPIs.
@@ -510,13 +510,13 @@ docker run --rm --mount "type=bind,source=$((Get-Location).Path),target=/workspa
 
 Configure your AWS credentials and S3 bucket in `.env`, then:
 1. Open the Airflow web interface at `http://localhost:8080`.
-2. Unpause the `ecommerce_cdc_daily` DAG.
-3. Trigger a manual run. The pipeline will automatically execute: Preflight Check → Parallel Bronze Extraction → AWS Glue 6.0 PySpark Job → dbt build → Athena Registration → Audit Log Commit.
+2. Keep the `ecommerce_cdc_daily` schedule paused during migration.
+3. Trigger a manual run. The pipeline will execute: Preflight Check → Parallel Bronze Extraction → AWS Glue 6.0 PySpark Job → dbt build → Athena Registration → Audit Log Commit. Unpause only after the controlled main run and Ops reconciliation in the [cutover runbook](docs/runbooks/aws-glue-cutover.md).
 
 ### Step 7: Connect & Refresh Power BI Dashboard
 1. Open `powerbi/EcommerceCDC.pbip` in **Power BI Desktop**.
-2. Configure the Amazon Athena ODBC DSN to match your AWS Region (`ap-southeast-1`) and S3 query output location.
-3. Click **Refresh** to load all 7 Import tables directly from the Athena Lakehouse views.
+2. Configure the Amazon Athena ODBC DSN for `ap-southeast-1`, `AwsDataCatalog`, the selected BI database, workgroup, and S3 query output location. Set `UseSingleCatalogAndSchema=1`; in Power BI select **Use Data Source Configuration** for the IAM-backed DSN.
+3. Click **Refresh** to load all seven Import tables. On 2026-11-10, the test-bucket Desktop report populated all five pages; five Executive cards and a separate random sample of five numbers reconciled with Athena and the frozen Olist OLTP baseline. Page-specific filters were tested, and the owner confirmed an independent reader understood page 1. See [Power BI validation](powerbi/README.md) for evidence and remaining Service/gateway limits.
 
 ---
 

@@ -47,22 +47,34 @@ table mart_product_performance
 		sourceColumn: order_count
 
 	column delivered_item_revenue_brl
-		dataType: decimal
+		dataType: double
 		lineageTag: b3d34f4f-fe4e-4bb1-a06d-8ce1ae89f94f
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: delivered_item_revenue_brl
 
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
 	column delivered_freight_brl
-		dataType: decimal
+		dataType: double
 		lineageTag: 81b8a89c-6f6a-4a96-8fd0-357079e2feb6
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: delivered_freight_brl
 
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
 	column average_item_price_brl
-		dataType: decimal
+		dataType: double
 		lineageTag: b6e95bad-0913-4882-82eb-a14062307e6f
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: average_item_price_brl
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
 
 	partition mart_product_performance = m
 		mode: import

@@ -1,5 +1,5 @@
 {
-  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.9.0/schema.json",
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.14.0/schema.json",
   "name": "0398310ec65b467e6633",
   "position": {
     "x": 24,
@@ -27,7 +27,8 @@
                 }
               },
               "queryRef": "mart_payment_mix_daily.payment_type",
-              "nativeQueryRef": "payment_type"
+              "nativeQueryRef": "payment_type",
+              "active": true
             }
           ]
         },

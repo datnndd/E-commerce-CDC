@@ -9,7 +9,9 @@ model Model
 
 annotation __PBI_TimeIntelligenceEnabled = 1
 
-annotation PBI_ProTooling = ["MCP-PBIModeling"]
+annotation PBI_ProTooling = ["MCP-PBIModeling","DevMode"]
+
+annotation PBI_QueryOrder = ["mart_daily_sales","mart_product_performance","mart_customer_rfm","mart_payment_mix_daily","mart_order_experience_daily","mart_funnel_daily","ops_pipeline_runs","AthenaDSN","AthenaDatabase"]
 
 ref table mart_daily_sales
 ref table mart_product_performance
@@ -18,5 +20,13 @@ ref table mart_payment_mix_daily
 ref table mart_order_experience_daily
 ref table mart_funnel_daily
 ref table ops_pipeline_runs
+ref table DateTableTemplate_4d8ee430-64b4-4eb9-9e82-a70334734adc
+ref table LocalDateTable_80c22dc1-e5fd-4790-8c2d-2fe1ba50ca34
+ref table LocalDateTable_c83f4ed3-f5be-43e2-b5d8-1909f9d1c471
+ref table LocalDateTable_29338ac3-d05d-4dae-8cf5-89bc3cc746fe
+ref table LocalDateTable_c4c3ff88-934d-424c-b64c-bccbee656585
+ref table LocalDateTable_c979c788-4874-4085-80dc-5c894447c8e8
+ref table LocalDateTable_80f68e95-2775-4bcf-ac93-da3dfc727fcc
 
 ref cultureInfo en-US
+

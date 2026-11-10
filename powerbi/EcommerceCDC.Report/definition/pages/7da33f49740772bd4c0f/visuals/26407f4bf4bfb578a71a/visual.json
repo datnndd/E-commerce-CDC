@@ -1,5 +1,5 @@
 {
-  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.9.0/schema.json",
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.14.0/schema.json",
   "name": "26407f4bf4bfb578a71a",
   "position": {
     "x": 864,
@@ -27,7 +27,8 @@
                 }
               },
               "queryRef": "mart_funnel_daily.device",
-              "nativeQueryRef": "device"
+              "nativeQueryRef": "device",
+              "active": true
             }
           ]
         },

@@ -16,58 +16,100 @@ table mart_customer_rfm
 	column customer_unique_id
 		dataType: string
 		lineageTag: f9f0a720-c6e4-4e2b-9e67-6f836d9233c2
+		summarizeBy: none
 		sourceColumn: customer_unique_id
+
+		annotation SummarizationSetBy = Automatic
 
 	column as_of_date
 		dataType: dateTime
+		formatString: Long Date
 		lineageTag: 57347ea6-2d08-4c28-87b3-fd3b2aee6590
+		summarizeBy: none
 		sourceColumn: as_of_date
+
+		variation Variation
+			isDefault
+			relationship: a78f19aa-66e3-4b2a-bf1c-742d29b96b1a
+			defaultHierarchy: LocalDateTable_c83f4ed3-f5be-43e2-b5d8-1909f9d1c471.'Date Hierarchy'
+
+		annotation UnderlyingDateTimeDataType = Date
+
+		annotation SummarizationSetBy = Automatic
 
 	column last_purchase_date
 		dataType: dateTime
+		formatString: Long Date
 		lineageTag: 69eb102a-d1e9-4f14-ac68-1e253647fc09
+		summarizeBy: none
 		sourceColumn: last_purchase_date
+
+		variation Variation
+			isDefault
+			relationship: 5fa078f8-910e-42c5-b4d0-f45f2481e5ed
+			defaultHierarchy: LocalDateTable_29338ac3-d05d-4dae-8cf5-89bc3cc746fe.'Date Hierarchy'
+
+		annotation UnderlyingDateTimeDataType = Date
+
+		annotation SummarizationSetBy = Automatic
 
 	column recency_days
 		dataType: int64
 		lineageTag: d9464ab5-d6d0-4b6b-952b-8c168cb2ee6d
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: recency_days
+
+		annotation SummarizationSetBy = Automatic
 
 	column frequency_orders
 		dataType: int64
 		lineageTag: d1b1c6a7-ba01-4677-9efa-81a4eb042e40
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: frequency_orders
 
+		annotation SummarizationSetBy = Automatic
+
 	column monetary_brl
-		dataType: decimal
+		dataType: double
 		lineageTag: 4f1320a6-fc09-48da-8202-9238f5ed2ffd
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: monetary_brl
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
 
 	column r_score
 		dataType: int64
 		lineageTag: 2b6506d6-83f5-41f9-ae83-6b0a20afa17f
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: r_score
+
+		annotation SummarizationSetBy = Automatic
 
 	column f_score
 		dataType: int64
 		lineageTag: 0381fcef-c07b-462d-8105-a49e82aa7989
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: f_score
+
+		annotation SummarizationSetBy = Automatic
 
 	column m_score
 		dataType: int64
 		lineageTag: 0716700d-10a1-45ba-88d1-2c3ddcc325c4
-		summarizeBy: none
+		summarizeBy: sum
 		sourceColumn: m_score
+
+		annotation SummarizationSetBy = Automatic
 
 	column segment
 		dataType: string
 		lineageTag: b58524cb-85c2-431a-bd26-2353e7bc3fb7
+		summarizeBy: none
 		sourceColumn: segment
+
+		annotation SummarizationSetBy = Automatic
 
 	partition mart_customer_rfm = m
 		mode: import
