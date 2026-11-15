@@ -13,6 +13,8 @@ Accepted decisions:
   Databricks source superseded)
 - [0004 AWS Glue Pipeline](0004-aws-glue-pipeline.md) (current execution and
   Power BI source; live validation pending)
+- [0005 Debezium/Kafka CDC](0005-debezium-kafka-cdc.md) (upgrade accepted;
+  cutover and live validation pending)
 
 Historical decision:
 

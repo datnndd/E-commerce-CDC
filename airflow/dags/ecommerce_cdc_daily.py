@@ -21,6 +21,7 @@ if S3_PREFIX and not re.fullmatch(r"[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*", S3_PREF
 BASE_CURRENCY = os.environ.get("EXCHANGE_BASE_CURRENCY", "BRL").strip().upper() or "BRL"
 QUOTE_CURRENCIES = os.environ.get("EXCHANGE_QUOTE_CURRENCIES", "USD").strip().upper() or "USD"
 GLUE_SILVER_JOB_NAME = os.environ.get("GLUE_SILVER_JOB_NAME", "ecommerce-silver-transform")
+CDC_MODE = os.environ.get("CDC_MODE", "polling")
 
 
 def alert_failure(context) -> None:
@@ -62,6 +63,8 @@ with DAG(
 
     @task
     def runtime_check() -> None:
+        if CDC_MODE not in {"polling", "debezium"}:
+            raise ValueError("CDC_MODE must be polling or debezium")
         bucket = os.environ.get("AIRFLOW_S3_BUCKET") or os.environ.get("S3_BUCKET")
         if not bucket:
             raise ValueError("Configure AIRFLOW_S3_BUCKET or S3_BUCKET runtime variable")
@@ -116,7 +119,9 @@ with DAG(
         env={"PIPELINE_DAG_ID": "{{ dag.dag_id }}", "PIPELINE_RUN_ID": "{{ run_id }}"},
         append_env=True,
     )
-    cdc = shell_task("extract_postgres_cdc_to_bronze", "python -m ingestion.cdc_extract")
+    cdc = (shell_task("wait_debezium_bronze", "python -m orchestration.wait_cdc_bronze")
+           if CDC_MODE == "debezium" else
+           shell_task("extract_postgres_cdc_to_bronze", "python -m ingestion.cdc_extract"))
     rates = BashOperator(
         task_id="ingest_exchange_rates_to_bronze",
         bash_command=(f'{UV} python -m ingestion.ingest_api --source exchange_rate '
@@ -150,6 +155,8 @@ with DAG(
             "--silver_root": silver_root,
             "--glue_database": os.environ.get("DBT_SILVER_SCHEMA", ""),
             "--pipeline_run_id": "{{ run_id }}",
+            "--cdc_mode": CDC_MODE,
+            "--cdc_topic_prefix": os.environ.get("CDC_TOPIC_PREFIX", "ecommerce_cdc"),
         },
     )
 

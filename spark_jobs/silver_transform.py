@@ -12,10 +12,11 @@ import sys
 from urllib.parse import urlsplit
 
 import boto3
+from botocore.exceptions import ClientError
 import great_expectations as gx
 from delta.tables import DeltaTable
 from pyspark.sql import DataFrame, SparkSession, Window, functions as F
-from pyspark.sql.types import StringType
+from pyspark.sql.types import StringType, StructType
 
 from spark_jobs.silver_schema import KEYS, OLTP_NAMES, SILVER_NAMES
 
@@ -68,12 +69,15 @@ def bronze_dataset_subpath(dataset: str) -> str:
     return f"bronze/api/{dataset}"
 
 
-def load_manifests_from_s3(spark: SparkSession, s3_root: str, dataset: str) -> list[tuple[dict, str]]:
+def load_manifests_from_s3(spark: SparkSession, s3_root: str, dataset: str,
+                           source_system: str = "postgres_oltp") -> list[tuple[dict, str]]:
     parsed = urlsplit(s3_root)
     prefix = parsed.path.strip("/")
-    dataset_prefix = f"{prefix + '/' if prefix else ''}{bronze_dataset_subpath(dataset)}/"
+    subpath = (f"bronze/postgres_debezium/{dataset}" if source_system == "postgres_debezium"
+               else bronze_dataset_subpath(dataset))
+    dataset_prefix = f"{prefix + '/' if prefix else ''}{subpath}/"
     # Glue 6.0's Spark 4.1 skips underscore-prefixed manifest files during listing.
-    s3 = boto3.client("s3")
+    s3 = boto3.client("s3", endpoint_url=os.environ.get("S3_ENDPOINT_URL"))
     manifests = []
     for page in s3.get_paginator("list_objects_v2").paginate(Bucket=parsed.netloc, Prefix=dataset_prefix):
         for item in page.get("Contents", []):
@@ -155,6 +159,111 @@ def committed_frames(spark: SparkSession, root: str, dataset: str) -> DataFrame:
     for frame in frames[1:]:
         result = result.unionByName(frame, allowMissingColumns=True)
     return result
+
+
+def cdc_checkpoint(silver_root: str, dataset: str) -> int:
+    path = f"{silver_root.rstrip('/')}/_cdc_offsets/{dataset}.json"
+    if is_s3_uri(path):
+        parsed = urlsplit(path)
+        try:
+            payload = boto3.client("s3", endpoint_url=os.environ.get("S3_ENDPOINT_URL")).get_object(
+                Bucket=parsed.netloc, Key=parsed.path.lstrip("/"))["Body"].read()
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] in {"NoSuchKey", "404"}:
+                return -1
+            raise
+    else:
+        local = Path(path)
+        if not local.exists():
+            return -1
+        payload = local.read_bytes()
+    state = json.loads(payload)
+    if state.get("dataset") != dataset or not isinstance(state.get("offset"), int):
+        raise ValueError(f"{path}: invalid CDC checkpoint")
+    return state["offset"]
+
+
+def save_cdc_checkpoint(silver_root: str, dataset: str, offset: int) -> None:
+    path = f"{silver_root.rstrip('/')}/_cdc_offsets/{dataset}.json"
+    current = cdc_checkpoint(silver_root, dataset)
+    if offset < current:
+        raise ValueError(f"{dataset}: CDC checkpoint moved backwards")
+    payload = json.dumps({"dataset": dataset, "offset": offset}).encode("utf-8")
+    if is_s3_uri(path):
+        parsed = urlsplit(path)
+        boto3.client("s3", endpoint_url=os.environ.get("S3_ENDPOINT_URL")).put_object(
+            Bucket=parsed.netloc, Key=parsed.path.lstrip("/"), Body=payload,
+            ContentType="application/json")
+    else:
+        local = Path(path)
+        local.parent.mkdir(parents=True, exist_ok=True)
+        temporary = local.with_suffix(".tmp")
+        temporary.write_bytes(payload)
+        temporary.replace(local)
+
+
+def committed_cdc_frames(spark: SparkSession, root: str, dataset: str,
+                         last_offset: int, topic_prefix: str = "ecommerce_cdc") -> tuple[DataFrame | None, int]:
+    if is_s3_uri(root):
+        entries = load_manifests_from_s3(spark, root, dataset, "postgres_debezium")
+    else:
+        local_dir = Path(root) / "bronze" / "postgres_debezium" / dataset
+        entries = [(json.loads(path.read_text(encoding="utf-8")), str(path.parent))
+                   for path in local_dir.rglob("_manifest.json")]
+    entries.sort(key=lambda item: item[0].get("offset_start", -1))
+    paths = []
+    expected = last_offset + 1
+    for manifest, directory in entries:
+        if manifest.get("status") != "committed":
+            continue
+        if manifest.get("source_system") != "postgres_debezium" or manifest.get("dataset") != dataset:
+            raise ValueError(f"{directory}: invalid CDC source or dataset")
+        expected_topic = f"{topic_prefix}.public.{dataset}"
+        if manifest.get("topic") != expected_topic or manifest.get("partition") != 0:
+            raise ValueError(f"{directory}: CDC topic or partition differs from {dataset}")
+        start, end = manifest.get("offset_start"), manifest.get("offset_end")
+        if not isinstance(start, int) or not isinstance(end, int) or end < start:
+            raise ValueError(f"{directory}: invalid CDC offset range")
+        if end <= last_offset:
+            continue
+        if start != expected:
+            raise ValueError(f"{dataset}: missing or overlapping CDC offsets at {expected}")
+        expected = end + 1
+        files = manifest.get("files", [])
+        if len(files) != 1 or files[0].get("name") != "events.jsonl":
+            raise ValueError(f"{directory}: invalid CDC file list")
+        path = f"{directory}/events.jsonl"
+        verify_manifest_file(path, files[0], spark)
+        frame = spark.read.json(path)
+        count = frame.count()
+        if count != manifest.get("row_count") or count != end - start + 1:
+            raise ValueError(f"{directory}: CDC row count differs from offsets")
+        if frame.filter((F.col("offset") < start) | (F.col("offset") > end) |
+                        (F.col("partition") != 0) | (F.col("topic") != manifest["topic"])).count():
+            raise ValueError(f"{directory}: CDC records differ from manifest")
+        if manifest.get("run_id") != directory.rstrip("/").rsplit("/", 1)[-1]:
+            raise ValueError(f"{directory}: CDC run ID differs from path")
+        paths.append(path)
+    if not paths:
+        return None, last_offset
+    # Infer one schema across snapshot and streaming files. An all-null `before`
+    # in a snapshot file otherwise becomes a string and cannot union with a
+    # subsequent update/delete `before` struct.
+    result = spark.read.json(paths)
+    result = result.withColumn(
+        "bronze_run_id",
+        F.regexp_extract(F.input_file_name(), r"/(offset=\d{20}-\d{20})/events\.jsonl$", 1),
+    )
+    if result.filter(F.col("bronze_run_id") == "").limit(1).count():
+        raise ValueError(f"{dataset}: CDC data path has no offset run ID")
+    for column in ("key", "value"):
+        field_type = result.schema[column].dataType if column in result.columns else None
+        if isinstance(field_type, StructType) and "payload" in field_type.names:
+            payload_schema = field_type["payload"].dataType
+            payload_json = F.get_json_object(F.to_json(F.col(column)), "$.payload")
+            direct_json = F.to_json(F.col(column))
+            result = result.withColumn(column, F.from_json(F.coalesce(payload_json, direct_json), payload_schema))
+    return result, expected - 1
 
 
 def quarantine_rows(dataset: str, frame: DataFrame) -> DataFrame:
@@ -289,6 +398,111 @@ def run_dataset(spark: SparkSession, bronze_root: str, silver_root: str, dataset
     return valid_count, bad_count
 
 
+def merge_cdc_delta(spark: SparkSession, upserts: DataFrame, deletes: DataFrame,
+                    path: str, keys: list[str]) -> None:
+    path = path.rstrip("/")
+    if not DeltaTable.isDeltaTable(spark, path):
+        if not upserts.take(1):
+            raise ValueError(f"{path}: CDC snapshot must establish the table before deletes")
+        upserts.write.format("delta").mode("append").save(path)
+    target = DeltaTable.forPath(spark, path)
+    condition = " AND ".join(f"target.{key} = source.{key}" for key in keys)
+    if upserts.take(1):
+        (target.alias("target").merge(upserts.alias("source"), condition)
+         .whenMatchedUpdateAll(condition="source.cdc_offset > target.cdc_offset")
+         .whenNotMatchedInsertAll().execute())
+    if deletes.take(1):
+        (target.alias("target").merge(deletes.alias("source"), condition)
+         .whenMatchedDelete(condition="source.cdc_offset > target.cdc_offset").execute())
+
+
+def run_cdc_dataset(spark: SparkSession, bronze_root: str, silver_root: str,
+                    dataset: str, topic_prefix: str = "ecommerce_cdc") -> tuple[int, int, int]:
+    last = cdc_checkpoint(silver_root, dataset)
+    frame, end = committed_cdc_frames(spark, bronze_root, dataset, last, topic_prefix)
+    if frame is None:
+        return 0, 0, last
+    if "value" not in frame.columns or not isinstance(frame.schema["value"].dataType, StructType):
+        if "value" not in frame.columns or frame.filter(F.col("value").isNotNull()).count():
+            raise ValueError(f"{dataset}: CDC batch has no Debezium envelope")
+        return 0, 0, end  # A Debezium tombstone follows its delete envelope.
+    invalid_op = F.col("value.op").isNull() | ~F.col("value.op").isin("r", "c", "u", "d")
+    if frame.filter(F.col("value").isNotNull() & invalid_op).count():
+        raise ValueError(f"{dataset}: invalid Debezium operation")
+    if "key" not in frame.columns or not isinstance(frame.schema["key"].dataType, StructType):
+        raise ValueError(f"{dataset}: CDC batch has no key")
+    keys = KEYS[dataset]
+    for key in keys:
+        if key not in frame.schema["key"].dataType.names:
+            raise ValueError(f"{dataset}: CDC key lacks {key}")
+    events = frame.filter(F.col("value.op").isin("r", "c", "u", "d"))
+    latest = (events.withColumn("_rank", F.row_number().over(
+        Window.partitionBy(*[F.col(f"key.{key}") for key in keys])
+        .orderBy(F.col("offset").desc())))
+        .filter(F.col("_rank") == 1).drop("_rank"))
+    deletes = latest.filter(F.col("value.op") == "d").select(
+        *[F.col(f"key.{key}").alias(key) for key in keys], F.col("offset").alias("cdc_offset"))
+    upsert_events = latest.filter(F.col("value.op").isin("r", "c", "u"))
+    if not upsert_events.take(1):
+        good = None
+        bad = None
+    else:
+        if "after" not in frame.schema["value"].dataType.names or not isinstance(
+            frame.schema["value"].dataType["after"].dataType, StructType
+        ):
+            raise ValueError(f"{dataset}: CDC upserts lack after image")
+        upserts = upsert_events.select(
+            "value.after.*", F.col("offset").alias("cdc_offset"),
+            F.col("value.op").alias("cdc_op"), F.col("value.source.lsn").alias("source_lsn"),
+            F.col("ingested_at"), F.lit(dataset).alias("source_table"), "bronze_run_id")
+        for name in list(upserts.columns):
+            if name.endswith(("_at", "_date", "_timestamp")):
+                value = F.col(name).cast("string")
+                upserts = upserts.withColumn(name, F.when(
+                    value.rlike("^[0-9]+$"), F.expr(f"timestamp_micros(cast(`{name}` as bigint))")
+                ).otherwise(F.try_to_timestamp(value)))
+            elif name in {"current_price", "price", "freight_value", "payment_value"}:
+                upserts = upserts.withColumn(name, F.col(name).cast("decimal(12,2)"))
+        good, bad = normalize(dataset, upserts)
+        if bad.take(1):
+            raise ValueError(f"{dataset}: CDC upsert failed Silver validation")
+    path = f"{silver_root.rstrip('/')}/{SILVER_NAMES[dataset]}"
+    if good is not None:
+        merge_cdc_delta(spark, good, deletes, path, keys)
+    elif deletes.take(1):
+        if not DeltaTable.isDeltaTable(spark, path):
+            raise ValueError(f"{dataset}: CDC delete precedes snapshot")
+        target = DeltaTable.forPath(spark, path)
+        condition = " AND ".join(f"target.{key} = source.{key}" for key in keys)
+        (target.alias("target").merge(deletes.alias("source"), condition)
+         .whenMatchedDelete(condition="source.cdc_offset > target.cdc_offset").execute())
+    if good is not None and bad is not None:
+        merge_delta(spark, bad, f"{silver_root.rstrip('/')}/silver_quarantine", ["record_id"], quarantine=True)
+    return (good.count() if good is not None else 0), 0, end
+
+
+def prune_deleted_clickstream_references(spark: SparkSession, silver_root: str) -> int:
+    root = silver_root.rstrip("/")
+    path = f"{root}/slv_clickstream_events"
+    if not DeltaTable.isDeltaTable(spark, path):
+        return 0
+    events = spark.read.format("delta").load(path)
+    customers = spark.read.format("delta").load(f"{root}/slv_customers").select("customer_id")
+    orders = spark.read.format("delta").load(f"{root}/slv_orders").select("order_id", "customer_id")
+    items = spark.read.format("delta").load(f"{root}/slv_order_items").select("order_id", "product_id")
+    missing_customer = events.join(customers, ["customer_id"], "left_anti").select("event_id")
+    purchases = events.filter(F.col("event_type") == "purchase")
+    missing_order = purchases.join(orders, ["order_id", "customer_id"], "left_anti").select("event_id")
+    missing_item = purchases.join(items, ["order_id", "product_id"], "left_anti").select("event_id")
+    orphan_ids = missing_customer.union(missing_order).union(missing_item).distinct()
+    count = orphan_ids.count()
+    if count:
+        (DeltaTable.forPath(spark, path).alias("target")
+         .merge(orphan_ids.alias("source"), "target.event_id = source.event_id")
+         .whenMatchedDelete().execute())
+    return count
+
+
 def check_frame(context, name: str, frame: DataFrame, expectations: list) -> bool:
     source = context.data_sources.add_spark(name=f"source_{name}")
     asset = source.add_dataframe_asset(name=f"asset_{name}")
@@ -373,7 +587,8 @@ def register_glue_catalog(spark: SparkSession, silver_root: str, database: str) 
             spark.sql(f"CREATE TABLE {relation} USING DELTA LOCATION '{path}'")
 
 
-def write_silver_metrics(spark: SparkSession, silver_root: str, bronze_root: str, run_id: str) -> None:
+def write_silver_metrics(spark: SparkSession, silver_root: str, bronze_root: str,
+                         run_id: str, cdc_bronze_rows: int | None = None) -> None:
     """Write measured post-merge counts for the matching Airflow run."""
     import boto3
 
@@ -391,7 +606,8 @@ def write_silver_metrics(spark: SparkSession, silver_root: str, bronze_root: str
     boto3.client("s3").put_object(
         Bucket=parsed.netloc,
         Key=key,
-        Body=json.dumps({"run_id": run_id, "silver_counts": counts, "quarantine_rows": quarantine}).encode("utf-8"),
+        Body=json.dumps({"run_id": run_id, "silver_counts": counts,
+                         "quarantine_rows": quarantine, "cdc_bronze_rows": cdc_bronze_rows}).encode("utf-8"),
         ContentType="application/json",
     )
 
@@ -418,6 +634,8 @@ GLUE_OPTION_SPEC: list[tuple[str, bool, str | None]] = [
     ("dataset", False, None),
     ("glue_database", True, None),
     ("pipeline_run_id", True, None),
+    ("cdc_mode", False, "polling"),
+    ("cdc_topic_prefix", False, "ecommerce_cdc"),
 ]
 
 
@@ -511,6 +729,10 @@ def parse_glue_args(argv: list[str], resolve_fn=None) -> argparse.Namespace:
 
     if not resolved.get("pipeline_run_id"):
         raise ValueError("Glue jobs require --pipeline_run_id")
+    if resolved.get("cdc_mode") not in {"polling", "debezium"}:
+        raise ValueError("cdc_mode must be polling or debezium")
+    if not re.fullmatch(r"[A-Za-z0-9_]+", resolved.get("cdc_topic_prefix") or ""):
+        raise ValueError("cdc_topic_prefix must use letters, digits or underscores")
 
     # Validate S3 path contracts for non-empty paths in Glue mode
     for path_key in ("bronze_root", "silver_root"):
@@ -541,6 +763,8 @@ def parse_cli_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--glue_database", "--glue-database", dest="glue_database", default=None,
                         help="AWS Glue Data Catalog database name for Silver tables")
     parser.add_argument("--pipeline_run_id", "--pipeline-run-id", dest="pipeline_run_id", default=None)
+    parser.add_argument("--cdc_mode", "--cdc-mode", choices=("polling", "debezium"), default="polling")
+    parser.add_argument("--cdc_topic_prefix", "--cdc-topic-prefix", default="ecommerce_cdc")
     parser.add_argument("--execution-date", "--execution_date", dest="execution_date", default=None,
                         help="Pipeline execution date partition or watermark (YYYY-MM-DD or ISO timestamp)")
 
@@ -563,6 +787,8 @@ def parse_cli_args(argv: list[str] | None = None) -> argparse.Namespace:
     if args.glue_database:
         if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,254}", args.glue_database):
             parser.error(f"Invalid glue-database identifier: {args.glue_database!r}")
+    if not re.fullmatch(r"[A-Za-z0-9_]+", args.cdc_topic_prefix):
+        parser.error("cdc-topic-prefix must use letters, digits or underscores")
 
     if args.execution_date:
         try:
@@ -602,9 +828,22 @@ def main() -> None:
     is_standalone_local = not is_s3_uri(args.silver_root) and "awsglue" not in sys.modules
     try:
         datasets = args.dataset or list(SILVER_NAMES.keys())
+        cdc_progress = {}
+        cdc_bronze_rows = 0
         for dataset in datasets:
-            valid, quarantined = run_dataset(spark, args.bronze_root, args.silver_root, dataset)
+            if args.cdc_mode == "debezium" and dataset in OLTP_NAMES:
+                previous_offset = cdc_checkpoint(args.silver_root, dataset)
+                valid, quarantined, end = run_cdc_dataset(
+                    spark, args.bronze_root, args.silver_root, dataset, args.cdc_topic_prefix)
+                cdc_progress[dataset] = end
+                cdc_bronze_rows += end - previous_offset
+            else:
+                valid, quarantined = run_dataset(spark, args.bronze_root, args.silver_root, dataset)
             print(f"{dataset}: {valid} latest valid rows, {quarantined} quarantined")
+
+        if args.cdc_mode == "debezium" and not args.dataset:
+            removed = prune_deleted_clickstream_references(spark, args.silver_root)
+            print(f"Removed {removed} clickstream events referencing deleted source rows")
 
         if not args.dataset:
             verify_silver_quality(spark, args.silver_root)
@@ -614,7 +853,13 @@ def main() -> None:
                 raise ValueError("Cannot register a partial Silver run")
             register_glue_catalog(spark, args.silver_root, args.glue_database)
         if args.pipeline_run_id:
-            write_silver_metrics(spark, args.silver_root, args.bronze_root, args.pipeline_run_id)
+            write_silver_metrics(spark, args.silver_root, args.bronze_root, args.pipeline_run_id,
+                                 cdc_bronze_rows if args.cdc_mode == "debezium" else None)
+
+        if args.cdc_mode == "debezium" and not args.dataset:
+            for dataset, end in cdc_progress.items():
+                if end >= 0:
+                    save_cdc_checkpoint(args.silver_root, dataset, end)
 
         if glue_job is not None:
             glue_job.commit()

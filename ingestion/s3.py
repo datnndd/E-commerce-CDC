@@ -50,4 +50,5 @@ def s3_client_and_bucket():
     if not bucket or bucket == "your-project-bucket":
         raise ValueError("Set S3_BUCKET in the environment or .env")
     region = os.environ.get("AWS_REGION") or local.get("AWS_REGION") or "ap-southeast-1"
-    return s3_session(local).client("s3", region_name=region), bucket
+    endpoint = os.environ.get("S3_ENDPOINT_URL") or local.get("S3_ENDPOINT_URL")
+    return s3_session(local).client("s3", region_name=region, endpoint_url=endpoint), bucket

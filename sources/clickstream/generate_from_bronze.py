@@ -4,12 +4,13 @@ import argparse
 import hashlib
 import io
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pyarrow.parquet as pq
 
 from ingestion.s3 import pipeline_s3_prefix, s3_client_and_bucket
+from spark_jobs.silver_schema import KEYS
 from sources.clickstream.generate import DEVICES, EVENT_TYPES, UTM_SOURCES
 
 
@@ -39,6 +40,54 @@ def snapshot_rows(s3, bucket: str, table: str, columns: list[str]) -> list[dict]
         rows.extend(part_table.to_pylist())
     if len(rows) != manifest["row_count"]:
         raise ValueError(f"{table}: snapshot row count differs from manifest")
+    return rows
+
+
+def current_cdc_rows(s3, bucket: str, table: str, columns: list[str]) -> list[dict]:
+    """Read the latest key state from committed Debezium Bronze events."""
+    prefix = pipeline_s3_prefix() + f"bronze/postgres_debezium/{table}/"
+    manifests = []
+    for page in s3.get_paginator("list_objects_v2").paginate(Bucket=bucket, Prefix=prefix):
+        for obj in page.get("Contents", []):
+            key = obj["Key"]
+            if key.endswith("/_manifest.json"):
+                manifest = json.loads(s3.get_object(Bucket=bucket, Key=key)["Body"].read())
+                if manifest.get("status") == "committed":
+                    manifests.append((key, manifest))
+    if not manifests:
+        raise ValueError(f"No committed Debezium Bronze for {table}")
+    current = {}
+    expected = 0
+    for key, manifest in sorted(manifests, key=lambda pair: pair[1]["offset_start"]):
+        if manifest.get("dataset") != table or manifest.get("source_system") != "postgres_debezium":
+            raise ValueError(f"{key}: wrong Debezium dataset")
+        if manifest["offset_start"] != expected:
+            raise ValueError(f"{table}: missing or overlapping Kafka offsets at {expected}")
+        expected = manifest["offset_end"] + 1
+        file = manifest["files"][0]
+        data = s3.get_object(Bucket=bucket, Key=key.rsplit("/", 1)[0] + "/" + file["name"])["Body"].read()
+        if len(data) != file["size_bytes"] or hashlib.sha256(data).hexdigest() != file["sha256"]:
+            raise ValueError(f"{table}: CDC data failed manifest integrity check")
+        for line in data.splitlines():
+            record = json.loads(line)
+            value = record["value"]
+            if value is None:
+                continue
+            event = value.get("payload", value)
+            row_key = tuple(record["key"][name] for name in KEYS[table])
+            if event["op"] == "d":
+                current.pop(row_key, None)
+            else:
+                row = event["after"]
+                current[row_key] = {name: row.get(name) for name in columns}
+    rows = list(current.values())
+    if table == "orders":
+        for row in rows:
+            value = row.get("order_purchase_timestamp")
+            if isinstance(value, (int, float)):
+                row["order_purchase_timestamp"] = datetime.fromtimestamp(value / 1_000_000, timezone.utc)
+            elif isinstance(value, str):
+                row["order_purchase_timestamp"] = datetime.fromisoformat(value.replace("Z", "+00:00"))
     return rows
 
 

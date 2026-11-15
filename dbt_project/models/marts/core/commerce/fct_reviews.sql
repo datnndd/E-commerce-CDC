@@ -1,4 +1,5 @@
-{{ config(materialized='incremental', incremental_strategy='merge', unique_key='review_row_id', file_format='delta') }}
+{{ config(materialized='incremental', incremental_strategy='merge', unique_key='review_row_id', file_format='delta',
+          post_hook="{{ sync_deleted_keys(this, ref('stg_reviews'), ['review_row_id']) }}") }}
 select r.review_row_id, r.review_id, r.order_id, o.customer_id, o.customer_unique_id,
        o.customer_key, o.purchase_date_key as order_purchase_date_key,
        cast(date_format(from_utc_timestamp(r.review_creation_date, 'America/Sao_Paulo'), 'yyyyMMdd') as int) as review_date_key,

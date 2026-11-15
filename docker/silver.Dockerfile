@@ -7,6 +7,7 @@ RUN apt-get update \
 
 ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv
+ENV UV_HTTP_TIMEOUT=300
 WORKDIR /workspace
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev

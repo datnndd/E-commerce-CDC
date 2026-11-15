@@ -61,6 +61,22 @@ class OpsRunsTest(unittest.TestCase):
             ops_runs.finish("dag", "run", "success", namespace_value="main")
         self.assertEqual(json.loads(self.s3.objects[ops_runs.run_key("dag", "run", "main")])["status"], "running")
 
+    def test_cdc_bronze_rows_use_applied_offsets_not_sink_publish_time(self):
+        started = ops_runs.start("dag", "run", namespace_value="main")
+        self.s3.objects[silver_metrics_key("", "run")] = json.dumps({
+            "run_id": "run", "silver_counts": {"slv_reviews": 1},
+            "quarantine_rows": 0, "cdc_bronze_rows": 3,
+        }).encode()
+        self.s3.objects["bronze/postgres_debezium/order_reviews/_manifest.json"] = json.dumps({
+            "status": "committed", "source_system": "postgres_debezium", "row_count": 3,
+        }).encode()
+        self.s3.objects["bronze/api/campaign/_manifest.json"] = json.dumps({
+            "status": "committed", "source_system": "api", "row_count": 2,
+            "started_at": started["started_at"],
+        }).encode()
+        record = ops_runs.finish("dag", "run", "failed", namespace_value="main")
+        self.assertEqual(record["bronze_rows"], 5)
+
     def test_failure_keeps_unknown_counts_null(self):
         record = ops_runs.finish("dag", "run", "failed", failed_task="silver",
                                  namespace_value="isolated")

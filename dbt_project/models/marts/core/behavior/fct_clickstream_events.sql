@@ -1,4 +1,5 @@
-{{ config(materialized='incremental', incremental_strategy='merge', unique_key='event_id', file_format='delta') }}
+{{ config(materialized='incremental', incremental_strategy='merge', unique_key='event_id', file_format='delta',
+          post_hook="{{ sync_deleted_keys(this, ref('stg_clickstream_events'), ['event_id']) }}") }}
 select e.event_id, e.session_id, e.event_type, e.event_timestamp,
        cast(date_format(from_utc_timestamp(e.event_timestamp, 'America/Sao_Paulo'), 'yyyyMMdd') as int) as event_date_key,
        e.customer_id, c.customer_key, e.product_id, p.product_key,

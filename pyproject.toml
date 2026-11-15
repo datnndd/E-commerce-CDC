@@ -7,6 +7,7 @@ dependencies = [
     "alembic>=1.17,<2",
     "boto3>=1.40,<2",
     "botocore[crt]>=1.43,<2",
+    "confluent-kafka>=2.12,<3",
     "dbt-glue>=1.8,<1.11",
     "delta-spark==4.2.0",
     "faker>=37,<39",

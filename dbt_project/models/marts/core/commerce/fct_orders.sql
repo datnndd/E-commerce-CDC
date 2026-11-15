@@ -1,4 +1,5 @@
-{{ config(materialized='incremental', incremental_strategy='merge', unique_key='order_id', file_format='delta') }}
+{{ config(materialized='incremental', incremental_strategy='merge', unique_key='order_id', file_format='delta',
+          post_hook="{{ sync_deleted_keys(this, ref('stg_orders'), ['order_id']) }}") }}
 select o.order_id, o.customer_id, c.customer_unique_id, c.customer_key,
        c.geography_key as customer_geography_key,
        o.order_status, o.order_purchase_timestamp, o.order_approved_at,

@@ -65,7 +65,8 @@ def start(dag_id: str, run_id: str, execution_date_value: str | None = None,
     return record
 
 
-def bronze_rows_since(s3, bucket: str, ns: str, started_at: datetime) -> int | None:
+def bronze_rows_since(s3, bucket: str, ns: str, started_at: datetime,
+                      exclude_source_system: str | None = None) -> int | None:
     prefix = "" if ns == "main" else f"{ns}/"
     total = 0
     try:
@@ -76,6 +77,8 @@ def bronze_rows_since(s3, bucket: str, ns: str, started_at: datetime) -> int | N
                     continue
                 manifest = read_object(s3, bucket, key)
                 if manifest and manifest.get("status") == "committed":
+                    if exclude_source_system is not None and manifest.get("source_system") == exclude_source_system:
+                        continue
                     published = datetime.fromisoformat(manifest["started_at"].replace("Z", "+00:00"))
                     if published >= started_at:
                         total += manifest.get("row_count", sum(f.get("row_count", 0) for f in manifest.get("files", [])))
@@ -113,10 +116,13 @@ def finish(dag_id: str, run_id: str, status: str, failed_task: str | None = None
     record.update(status=status, finished_at=now.isoformat(),
                   duration_seconds=max(0.0, round((now - started_at).total_seconds(), 2)),
                   failed_task=failed_task, error_message=error_message or failed_task)
-    record["bronze_rows"] = bronze_rows_since(s3, bucket, ns, started_at)
-
     prefix = "" if ns == "main" else ns
     metrics = read_object(s3, bucket, silver_metrics_key(prefix, run_id))
+    cdc_rows = metrics.get("cdc_bronze_rows") if metrics is not None else None
+    other_rows = bronze_rows_since(s3, bucket, ns, started_at,
+                                   "postgres_debezium" if cdc_rows is not None else None)
+    record["bronze_rows"] = (other_rows + cdc_rows if other_rows is not None and cdc_rows is not None
+                             else other_rows)
     if metrics is not None:
         if metrics.get("run_id") != run_id:
             raise ValueError("Silver metrics belong to another run")

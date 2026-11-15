@@ -1,4 +1,5 @@
-{{ config(materialized='incremental', incremental_strategy='merge', unique_key=['order_id', 'payment_sequential'], file_format='delta') }}
+{{ config(materialized='incremental', incremental_strategy='merge', unique_key=['order_id', 'payment_sequential'], file_format='delta',
+          post_hook="{{ sync_deleted_keys(this, ref('stg_payments'), ['order_id', 'payment_sequential']) }}") }}
 select p.order_id, p.payment_sequential, o.customer_id, o.customer_unique_id,
        o.customer_key, o.purchase_date_key as order_purchase_date_key,
        p.payment_type, p.payment_installments, p.payment_value as payment_value_brl,
